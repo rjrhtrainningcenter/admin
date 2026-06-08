@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-In System - RJRH TRAINING CENTER</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2=family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #071f54; --accent: #1976d2; }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f0f4f8; }
+        .navbar { background: linear-gradient(135deg, #051336, var(--accent)); padding: 12px 0; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        #reader { width: 100%; border-radius: 15px; overflow: hidden; background-color: #000; }
+        .loader { display: none; text-align: center; padding: 20px; }
+        .course-badge { font-size: 0.85rem; padding: 6px 12px; border-radius: 8px; }
+        .bg-light-success { background-color: #e8f5e9; }
+        .bg-light-info { background-color: #e3f2fd; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark shadow-sm">
+        <div class="container d-flex justify-content-between align-items-center">
+            <span class="navbar-brand fw-bold d-flex align-items-center">
+                <i class="fas fa-qrcode me-2"></i> RJRH - หน้างานเช็คอิน/เช็คเอาท์ [BLS]
+            </span>
+            <a class="btn btn-sm btn-outline-light rounded-pill px-3 fw-bold" href="index.html"><i class="fas fa-arrow-left me-1"></i> กลับหน้าเมนู</a>
+        </div>
+    </nav>
+
+    <div class="container py-4" style="max-width: 600px;">
+        <!-- ส่วนสลับโหมดการทำงานหน้างาน -->
+        <div class="card p-4 bg-white shadow-sm">
+            <div class="btn-group w-100 mb-4" role="group">
+                <input type="radio" class="btn-check" name="scanMode" id="modeIn" value="IN" checked onchange="clearResult()">
+                <label class="btn btn-outline-success py-2 fw-bold" for="modeIn">โหมดเช็คอิน (เข้าเรียน)</label>
+                <input type="radio" class="btn-check" name="scanMode" id="modeOut" value="OUT" onchange="clearResult()">
+                <label class="btn btn-outline-info py-2 fw-bold" for="modeOut">โหมดเช็คเอาท์ (รับใบประกาศ)</label>
+            </div>
+            
+            <div class="text-center mb-3" id="cameraStartSection">
+                <button class="btn btn-primary btn-lg w-100 fw-bold shadow-sm py-3" onclick="startScanner()"><i class="fas fa-camera me-2"></i> เปิดกล้องสแกน QR Code</button>
+            </div>
+            
+            <div id="scannerContainer" style="display: none;" class="mb-3">
+                <button class="btn btn-danger w-100 fw-bold mb-3 shadow-sm" onclick="stopScanner()">ปิดกล้อง</button>
+                <div id="reader"></div>
+            </div>
+        </div>
+
+        <!-- ส่วนค้นหาด้วยข้อมูลหรือพิมพ์รหัสด้วยตัวเอง -->
+        <div class="card p-4 shadow-sm">
+            <h6 class="fw-bold text-muted mb-3">พิมพ์รหัสด้วยตัวเอง (Manual Search)</h6>
+            <div class="input-group">
+                <input type="text" id="searchInput" class="form-control form-control-lg bg-light" placeholder="กรอกรหัสลงทะเบียน 8 หลัก หรือเบอร์โทรศัพท์">
+                <button class="btn btn-primary px-4" id="btnManualSubmit" onclick="processManualInput()"><i class="fas fa-search"></i> ค้นหา</button>
+            </div>
+            <div class="loader" id="searchLoader"><div class="spinner-border text-primary"></div></div>
+            <div id="actionResult" style="display: none; margin-top: 15px;"></div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+
+<script>
+    let html5QrCode; 
+    let isProcessing = false;
+    let fetchedRecords = []; 
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        if (typeof checkAuthGuard === 'function') {
+            try { await checkAuthGuard(); } catch (e) { console.error("Auth Guard Error:", e); }
+        }
+    });
+
+    async function startScanner() {
+        clearResult();
+        document.getElementById('cameraStartSection').style.display = 'none';
+        document.getElementById('scannerContainer').style.display = 'block';
+        
+        if (html5QrCode) {
+            try { await html5QrCode.clear(); } catch(e){}
+        }
+        html5QrCode = new Html5Qrcode("reader");
+        
+        try { 
+            await html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: { width: 260, height: 260 } }, 
+                onScanSuccess
+            ); 
+        } catch (err) { 
+            console.error(err);
+            Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบสิทธิ์บนเบราว์เซอร์', 'warning'); 
+            stopScanner(); 
+        }
+    }
+
+    function stopScanner() {
+        if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().then(() => {
+                document.getElementById('cameraStartSection').style.display = 'block';
+                document.getElementById('scannerContainer').style.display = 'none';
+            }).catch(err => {
+                console.error("Error stopping scanner: ", err);
+                document.getElementById('cameraStartSection').style.display = 'block';
+                document.getElementById('scannerContainer').style.display = 'none';
+            });
+        } else {
+            document.getElementById('cameraStartSection').style.display = 'block';
+            document.getElementById('scannerContainer').style.display = 'none';
+        }
+    }
+
+    function onScanSuccess(decodedText) {
+        if(isProcessing) return;
+        document.getElementById('searchInput').value = decodedText;
+        stopScanner(); 
+        searchParticipant(decodedText);
+    }
+
+    function processManualInput() {
+        const query = document.getElementById('searchInput').value.trim();
+        if(query) searchParticipant(query);
+    }
+    
+    function clearResult() {
+        document.getElementById('actionResult').style.display = 'none';
+        fetchedRecords = [];
+    }
+
+    // 🔍 ค้นหารายชื่อผู้สมัครเรียนจากรหัส หรือ เบอร์โทรผ่าน Supabase
+    async function searchParticipant(searchQuery) {
+        if(isProcessing) return;
+        isProcessing = true; 
+        document.getElementById('searchLoader').style.display = 'block';
+        
+        const btnManual = document.getElementById('btnManualSubmit');
+        if(btnManual) btnManual.disabled = true;
+
+        const selectedMode = document.querySelector('input[name="scanMode"]:checked').value;
+        const resultDiv = document.getElementById('actionResult'); 
+        resultDiv.style.display = 'none';
+
+        try {
+            let isNumber = /^\d+$/.test(searchQuery);
+            let queryFilter = isNumber ? `id.eq.${searchQuery},phone.eq.${searchQuery}` : `phone.eq.${searchQuery}`;
+
+            // ดึงรายชื่อจากตารางหลัก registrations
+            let { data: results, error: fetchError } = await supabaseClient
+                .from('registrations')
+                .select('*, sessions(name, date)')
+                .or(queryFilter);
+
+            if (fetchError) throw fetchError;
+            if (!results || results.length === 0) {
+                throw new Error(`ไม่พบข้อมูลผู้ลงทะเบียนจากรหัส หรือ เบอร์โทร: "${searchQuery}"`);
+            }
+
+            fetchedRecords = results; 
+            const user = fetchedRecords[0];
+
+            let pdpaBadge = user.photo_consent 
+                ? `<span class="badge bg-success course-badge"><i class="fas fa-camera me-1"></i> PDPA: ยินยอมให้ถ่ายภาพ</span>` 
+                : `<span class="badge bg-danger course-badge"><i class="fas fa-camera-slash me-1"></i> PDPA: ห้ามถ่ายภาพ</span>`;
+            
+            let currentStatus = "";
+            if (user.is_checked_out) {
+                currentStatus = `<span class="badge bg-light-info border border-info text-info fw-bold py-2 px-3"><i class="fas fa-graduation-cap me-1"></i> เช็คเอาท์แล้ว</span>`;
+            } else if (user.is_checked_in) {
+                currentStatus = `<span class="badge bg-light-success border border-success text-success fw-bold py-2 px-3"><i class="fas fa-check-circle me-1"></i> เช็คอินแล้ว</span>`;
+            } else {
+                currentStatus = `<span class="badge bg-light-secondary border text-secondary fw-bold py-2 px-3"><i class="fas fa-clock me-1"></i> ยังไม่เช็คอิน</span>`;
+            }
+
+            let actionButton = "";
+            if (selectedMode === "IN") {
+                if (user.is_checked_in) {
+                    actionButton = `<div class="alert alert-success border-success text-center mb-0 mt-3 py-2 fw-bold small"><i class="fas fa-check-circle me-1"></i> ท่านได้เช็คอินเข้าเรียนเรียบร้อยแล้ว</div>`;
+                } else {
+                    actionButton = `<button class="btn btn-success btn-sm w-100 fw-bold mt-3 py-2 shadow-sm" onclick="commitCheckInSpecific(0, 'IN')"><i class="fas fa-sign-in-alt me-1"></i> บันทึกเช็คอินเข้าเรียน</button>`;
+                }
+            } else if (selectedMode === "OUT") {
+                if (!user.is_checked_in) {
+                    actionButton = `<div class="alert alert-secondary text-center mb-0 mt-3 py-2 fw-bold small"><i class="fas fa-exclamation-circle me-1"></i> ไม่สามารถเช็คเอาท์ได้ (เนื่องจากยังไม่ได้เช็คอินเข้าเรียน)</div>`;
+                } else if (user.is_checked_out) {
+                    actionButton = `<div class="alert alert-info border-info text-center mb-0 mt-3 py-2 fw-bold small"><i class="fas fa-certificate me-1"></i> เช็คเอาท์รับวุฒิบัตรเรียบร้อยแล้ว</div>`;
+                } else {
+                    actionButton = `<button class="btn btn-info text-white btn-sm w-100 fw-bold mt-3 py-2 shadow-sm" onclick="commitCheckInSpecific(0, 'OUT')"><i class="fas fa-sign-out-alt me-1"></i> บันทึกเช็คเอาท์และส่งรายชื่อเข้าคิวรับใบประกาศ</button>`;
+                }
+            }
+
+            let htmlContent = `
+                <div class="card border-primary shadow-sm mb-0">
+                    <div class="card-header bg-primary text-white fw-bold"><i class="fas fa-user me-2"></i>ข้อมูลผู้รายงานตัว</div>
+                    <div class="card-body text-start">
+                        <p class="mb-1"><small class="text-muted">ชื่อ-นามสกุล:</small><br><b class="fs-5">${user.prefix || ''} ${user.full_name_th}</b></p>
+                        <p class="mb-1"><small class="text-muted">โครงการ/รอบอบรม:</small><br><span class="text-dark fw-semibold">${user.sessions?.name || 'ไม่พบรอบอบรม'} (${user.sessions?.date || ''})</span></p>
+                        <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-2">
+                            ${pdpaBadge}
+                            <small class="text-muted">ID: ${user.id}</small>
+                        </div>
+                        <div class="text-center mt-2">${currentStatus}</div>
+                        ${actionButton}
+                    </div>
+                </div>`;
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = htmlContent;
+            document.getElementById('searchInput').value = "";
+
+        } catch (e) {
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `<div class="alert alert-danger text-center fw-bold py-3 mb-0"><i class="fas fa-times-circle me-2"></i>${e.message}</div>`;
+        } finally { 
+            document.getElementById('searchLoader').style.display = 'none';
+            if(btnManual) btnManual.disabled = false;
+            isProcessing = false; 
+        }
+    }
+
+    // 💾 บันทึกการลงเวลาเข้าเซิร์ฟเวอร์คู่ขนานทั้ง Supabase และ GAS
+    async function commitCheckInSpecific(index, selectedMode) {
+        if(isProcessing || !fetchedRecords[index]) return;
+        isProcessing = true;
+        
+        const user = fetchedRecords[index];
+        const resultDiv = document.getElementById('actionResult');
+        resultDiv.style.opacity = '0.5';
+
+        try {
+            let nowTime = new Date().toISOString();
+
+            // ==========================================
+            // ☀️ [โหมดเช็คอิน - IN]
+            // ==========================================
+            if (selectedMode === "IN") {
+                // 1. อัปเดตตารางหลัก registrations บน Supabase
+                const { error: updateError } = await supabaseClient
+                    .from('registrations')
+                    .update({ is_checked_in: true, checked_in_at: nowTime })
+                    .eq('id', user.id);
+                if (updateError) throw updateError;
+
+                // 2. ส่งสัญญาณต่อท่อไปบันทึกเวลาฝั่งตารางคอลัมน์ J บน Google Sheets ผ่านแบบ URL-encoded ทลาย CORS
+                try {
+                    await fetch(MAIN_REG_API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: "postData=" + encodeURIComponent(JSON.stringify({
+                            action: "checkInSuccess",
+                            id: String(user.id).trim()
+                        }))
+                    });
+                } catch(gasErr) { console.error("GAS Sheet Sync Error:", gasErr); }
+
+                Swal.fire({ title: 'เช็คอินสำเร็จ!', text: 'ระบบบันทึกเวลาเข้าเรียนเรียบร้อยแล้ว', icon: 'success', timer: 1500, showConfirmButton: false });
+            } 
+            // ==========================================
+            // 🌙 [โหมดเช็คเอาท์ - OUT]
+            // ==========================================
+            else {
+                // ยิงไปหาคำสั่ง Route 3 ของฝั่ง GAS หลักโดยตรง เพื่อรันโฟลว์ล็อกความปลอดภัยคู่ขนาน
+                // ตัวสคริปต์ GAS หลังบ้านจะจัดทำสร้าง Record คิวใน certificates_queue ให้กลายเป็น "กำลังเจน" และสร้าง PDF ทันที
+                const response = await fetch(MAIN_REG_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: "postData=" + encodeURIComponent(JSON.stringify({
+                        action: "checkOutSuccess",
+                        id: String(user.id).trim()
+                    }))
+                });
+
+                const resData = await response.json();
+                if (!resData.success) throw new Error(resData.error || "ระบบหลังบ้านประมวลผลเช็คเอาท์ขัดข้อง");
+
+                Swal.fire({
+                    title: 'บันทึกเช็คเอาท์สำเร็จ!',
+                    html: `เลขที่ใบประกาศนียบัตรของคุณคือ: <b class="text-primary">${resData.cerNo}</b><br>ระบบได้สร้างไฟล์ PDF ใบประกาศไทย และนำรายชื่อเข้าสู่คลังเรียบร้อยแล้วครับ`,
+                    icon: 'success',
+                    confirmButtonColor: '#071f54'
+                });
+            }
+
+            clearResult();
+        } catch (e) {
+            console.error(e);
+            Swal.fire('เกิดข้อผิดพลาดวิกฤต', e.message, 'error');
+        } finally { 
+            resultDiv.style.opacity = '1';
+            isProcessing = false; 
+        }
+    }
+</script>
+</body>
+</html>
