@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Configuration - RJRH TRAINING CENTER</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #071f54; --accent: #1976d2; }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f0f4f8; }
+        .navbar { background: linear-gradient(135deg, #051336, var(--accent)); padding: 12px 0; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .status-toggle { cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark shadow-sm">
+        <div class="container d-flex justify-content-between align-items-center">
+            <span class="navbar-brand fw-bold d-flex align-items-center">
+                <i class="fas fa-cog me-2"></i> RJRH - ตั้งค่ารอบคอร์สอบรม [BLS]
+            </span>
+            <a class="btn btn-sm btn-outline-light rounded-pill px-3 fw-bold" href="index.html"><i class="fas fa-arrow-left me-1"></i> กลับหน้าเมนู</a>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <div class="card p-3 bg-light mb-4 shadow-sm">
+            <h6 class="fw-bold text-primary mb-3"><i class="fas fa-plus-circle me-2"></i>เปิดรอบโครงการอบรม BLS ใหม่</h6>
+            <div class="row g-2">
+                <div class="col-md-4 col-12">
+                    <input type="text" id="newSessionName" class="form-control" placeholder="ชื่อโครงการ (เช่น Basic Life Support รุ่นที่ 1)">
+                </div>
+                <div class="col-md-3 col-6">
+                    <input type="date" id="newSessionDate" class="form-control">
+                </div>
+                <div class="col-md-3 col-6">
+                    <select id="newSessionTime" class="form-select">
+                        <option value="เต็มวัน">เต็มวัน (09:00 - 16:00 น.)</option>
+                        <option value="รอบเช้า">รอบเช้า (09:00 - 12:00 น.)</option>
+                        <option value="รอบบ่าย">รอบบ่าย (13:00 - 16:00 น.)</option>
+                    </select>
+                </div>
+                <div class="col-md-1 col-8">
+                    <input type="number" id="newSessionMax" class="form-control" placeholder="ที่นั่ง" min="1">
+                </div>
+                <div class="col-md-1 col-4">
+                    <button class="btn btn-success w-100 fw-bold" id="btnCreateSession" onclick="addNewSession()">เพิ่ม</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-3 shadow-sm bg-white">
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ชื่อโครงการ / รายละเอียดรอบอบรม</th>
+                            <th class="text-center" width="120">สถานะเปิดรับ</th>
+                            <th class="text-center" width="120">โควตาทั้งหมด</th>
+                            <th class="text-center" width="120">ที่นั่งคงเหลือ</th>
+                            <th class="text-center" width="150">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="configTableBody">
+                        <tr><td colspan="5" class="text-center text-muted py-4">กำลังโหลดรายการรอบอบรมจากเซิร์ฟเวอร์...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+
+<script>
+    window.addEventListener('DOMContentLoaded', async () => {
+        // ดักเช็คสิทธิ์ความปลอดภัยด้วย Route Guard 
+        if (typeof checkAuthGuard === 'function') { 
+            await checkAuthGuard(); 
+        }
+        loadConfig();
+    });
+
+    // 🔄 ดึงรายการรอบอบรมจาก Supabase มากระจายลงตารางหลัก
+    async function loadConfig() {
+        const tbody = document.getElementById('configTableBody'); 
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>กำลังโหลดรายการรอบอบรม...</td></tr>';
+        
+        try {
+            const { data: sessions, error } = await supabaseClient
+                .from('sessions')
+                .select('*')
+                .eq('course_key', 'BLS') // คัดกรองเอาเฉพาะ BLS เท่านั้น
+                .order('training_date', { ascending: true }); // เรียงลำดับตามวันที่จัดกิจกรรมใกล้-ไกล
+                
+            if (error) throw error;
+            tbody.innerHTML = '';
+            
+            if (!sessions || sessions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">ยังไม่มีการเปิดรอบอบรมในระบบ</td></tr>';
+                return;
+            }
+
+            sessions.forEach(s => {
+                // ตัวเปลี่ยนสถานะเปิด-ปิดรับสมัคร (Active / Closed)
+                const statusBadge = s.status === 'Active' 
+                    ? `<span class="badge bg-success status-toggle px-3 py-2" onclick="toggleSessionStatus(${s.id}, 'Closed')"><i class="fas fa-lock-open me-1"></i> เปิดรับสมัคร</span>` 
+                    : `<span class="badge bg-secondary status-toggle px-3 py-2" onclick="toggleSessionStatus(${s.id}, 'Active')"><i class="fas fa-lock me-1"></i> ปิดรับสมัคร</span>`;
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td>
+                            <span class="badge bg-dark mb-1"><i class="fas fa-graduation-cap me-1"></i> ${s.course_key}</span><br>
+                            <b class="text-dark fs-6">${s.name}</b><br>
+                            <small class="text-primary fw-bold"><i class="far fa-calendar-alt me-1"></i> ${s.date}</small>
+                        </td>
+                        <td class="text-center">${statusBadge}</td>
+                        <td class="text-center">
+                            <input type="number" class="form-control form-control-sm text-center mx-auto fw-bold" id="max_${s.id}" value="${s.max_seats}" style="width:80px" min="1">
+                        </td>
+                        <td class="text-center fw-bold text-primary fs-5">${s.available_seats}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-primary me-1" onclick="updateSeatsQuota(${s.id})" title="บันทึกปรับโควตา"><i class="fas fa-save"></i> บันทึก</button> 
+                            <button class="btn btn-sm btn-danger" onclick="deleteSessionData(${s.id}, '${s.name}')" title="ลบรอบอบรมนี้"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>`;
+            });
+        } catch(err) {
+            console.error("Load sessions failure:", err);
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบการตั้งค่าหลังบ้าน</td></tr>';
+        }
+    }
+
+    // ➕ ฟังก์ชันแอดเพิ่มรอบกิจกรรมอบรมใหม่
+    async function addNewSession() {
+        const name = document.getElementById('newSessionName').value.trim(); 
+        const rawDate = document.getElementById('newSessionDate').value; 
+        const timePart = document.getElementById('newSessionTime').value; 
+        const max = document.getElementById('newSessionMax').value;
+        const btn = document.getElementById('btnCreateSession');
+        
+        if(!name || !rawDate || !max || parseInt(max) <= 0) { 
+            Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุชื่อโครงการ วันที่จัด และจำนวนที่นั่งโควตาให้ครบถ้วนด้วยครับ', 'warning'); 
+            return; 
+        }
+        
+        btn.disabled = true; 
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        try {
+            // ปฏิบัติการตัดแบ่งชิ้นส่วนวันที่สากล (YYYY-MM-DD) เพื่อประกอบแปลงร่างเป็นข้อความไทยพรีเมียม
+            const dateParts = rawDate.split("-");
+            const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            const fullDateString = `${parseInt(dateParts[2])} ${thaiMonths[parseInt(dateParts[1]) - 1]} ${parseInt(dateParts[0]) + 543} (${timePart})`; 
+
+            // ยิงข้อมูลบันทึกลงโต๊ะเซสชันของ Supabase (แยกช่องระบุประเภทตัวแปรชัดเจนเพื่อล้างบั๊ก)
+            const { error } = await supabaseClient.from('sessions').insert([{ 
+                course_key: "BLS", 
+                name: name, 
+                training_date: rawDate,         // ส่งค่าปฏิทิน DATE แท้ (อุดรอยรั่ว)
+                training_time: timePart,        // ส่งช่วงเวลาเดี่ยวแยกคอลัมน์
+                date: fullDateString,           // ข้อความไทยหรู ๆ สำหรับแสดงผลโชว์หน้าจอ
+                max_seats: parseInt(max), 
+                available_seats: parseInt(max) 
+            }]);
+            
+            if(error) throw error;
+
+            Swal.fire({ title: 'สำเร็จ!', text: 'เปิดรอบฝึกอบรม BLS เรียบร้อยแล้ว', icon: 'success', timer: 1500, showConfirmButton: false });
+            document.getElementById('newSessionName').value = ''; 
+            document.getElementById('newSessionDate').value = ''; 
+            document.getElementById('newSessionMax').value = ''; 
+            loadConfig(); 
+        } catch (err) { 
+            console.error(err);
+            Swal.fire('ข้อผิดพลาด', `ล้มเหลวในการเชื่อมต่อเซิร์ฟเวอร์: ${err.message || ''}`, 'error'); 
+        } finally { 
+            btn.disabled = false; 
+            btn.innerHTML = 'เพิ่ม'; 
+        }
+    }
+
+    // 💾 ฟังก์ชันกดคำนวณและอัปเดตปรับแก้จำนวนที่นั่งโควตาคงเหลือจริงแบบ Realtime
+    async function updateSeatsQuota(id) {
+        const newMax = parseInt(document.getElementById(`max_${id}`).value);
+        if (isNaN(newMax) || newMax < 1) {
+            Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุโควตาจำนวนที่นั่งที่ถูกต้อง', 'warning');
+            return;
+        }
+
+        try {
+            // นับยอดผู้สมัครตัวจริงที่เข้าจองที่นั่งในรหัสรอบเซสชันนี้เรียบร้อยแล้ว
+            const { count, error: countError } = await supabaseClient
+                .from('registrations')
+                .select('*', { count: 'exact', head: true })
+                .eq('session_id', id);
+
+            if (countError) throw countError;
+
+            const registeredCount = count || 0;
+            const newAvailable = newMax - registeredCount; // โควตาใหม่ - ยอดลงทะเบียนปัจจุบัน = ที่นั่งเหลือสุทธิ
+
+            // อัปเดตข้อมูลกลับสู่จุดศูนย์กลางตาราง sessions
+            const { error: updateError } = await supabaseClient
+                .from('sessions')
+                .update({ max_seats: newMax, available_seats: newAvailable })
+                .eq('id', id);
+
+            if (updateError) throw updateError;
+
+            Swal.fire({ title: 'อัปเดตสำเร็จ', text: 'ปรับเปลี่ยนโควตาที่นั่งและยอดคงเหลือในระบบเรียบร้อย', icon: 'success', timer: 1200, showConfirmButton: false }); 
+            loadConfig();
+        } catch(e) { 
+            console.error(e);
+            Swal.fire('ข้อผิดพลาด', `อัปเดตไม่สำเร็จ: ${e.message}`, 'error'); 
+        }
+    }
+
+    // 🔒 ฟังก์ชันสับสวิตช์สถานะ เปิดรับ / ปิดรับสมัครอบรม
+    async function toggleSessionStatus(id, newStatus) { 
+        try {
+            const { error } = await supabaseClient.from('sessions').update({ status: newStatus }).eq('id', id); 
+            if (error) throw error;
+            loadConfig(); 
+        } catch (e) {
+            console.error(e);
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถปรับเปลี่ยนสถานะเปิดรับได้ในขณะนี้', 'error');
+        }
+    }
+
+    // ❌ ฟังก์ชันลบรอบการอบรมออกจากคลังฐานข้อมูล
+    async function deleteSessionData(id, name) { 
+        const res = await Swal.fire({ 
+            title: 'ยืนยันการลบรอบอบรมนี้?', 
+            html: `คุณกำลังจะลบรอบอบรมโครงการ <b>"${name}"</b><br><span class="text-danger fw-bold">⚠️ คำเตือนวิกฤต: รายชื่อผู้สมัครและคิวใบประกาศทั้งหมดในรอบนี้จะถูกลบหายไปอย่างถาวรจากระบบทันที!</span>`, 
+            icon: 'warning', 
+            showCancelButton: true, 
+            confirmButtonColor: '#d33',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonText: 'ใช่, ฉันต้องการลบ'
+        }); 
+        
+        if (res.isConfirmed) { 
+            try {
+                const { error } = await supabaseClient.from('sessions').delete().eq('id', id); 
+                if (error) throw error;
+                Swal.fire({ title: 'ลบสำเร็จ', text: 'ข้อมูลรอบเรียนถูกถอนออกจากระบบแล้ว', icon: 'success', timer: 1200, showConfirmButton: false });
+                loadConfig(); 
+            } catch (e) {
+                console.error(e);
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถถอนฐานข้อมูลรอบเรียนรายนี้ออกไปได้', 'error');
+            }
+        } 
+    }
+</script>
+</body>
+</html>
