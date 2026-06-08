@@ -30,11 +30,14 @@
         <div class="card p-3 bg-light mb-4 shadow-sm">
             <h6 class="fw-bold text-primary mb-3"><i class="fas fa-plus-circle me-2"></i>เปิดรอบโครงการอบรม BLS ใหม่</h6>
             <div class="row g-2">
-                <div class="col-md-4 col-12">
-                    <input type="text" id="newSessionName" class="form-control" placeholder="ชื่อโครงการ (เช่น Basic Life Support รุ่นที่ 1)">
+                <div class="col-md-3 col-12">
+                    <input type="text" id="newSessionCourse" class="form-control fw-bold bg-white" value="BASIC LIFE SUPPORT" readonly>
                 </div>
-                <div class="col-md-3 col-6">
-                    <input type="date" id="newSessionDate" class="form-control">
+                <div class="col-md-1 col-12">
+                    <input type="number" id="newSessionGen" class="form-control text-center" placeholder="รุ่นที่" min="1" required>
+                </div>
+                <div class="col-md-2 col-6">
+                    <input type="date" id="newSessionDate" class="form-control" required>
                 </div>
                 <div class="col-md-3 col-6">
                     <select id="newSessionTime" class="form-select">
@@ -43,8 +46,8 @@
                         <option value="รอบบ่าย">รอบบ่าย (13:00 - 16:00 น.)</option>
                     </select>
                 </div>
-                <div class="col-md-1 col-8">
-                    <input type="number" id="newSessionMax" class="form-control" placeholder="ที่นั่ง" min="1">
+                <div class="col-md-2 col-8">
+                    <input type="number" id="newSessionMax" class="form-control text-center" placeholder="จำนวนที่นั่ง" min="1" required>
                 </div>
                 <div class="col-md-1 col-4">
                     <button class="btn btn-success w-100 fw-bold" id="btnCreateSession" onclick="addNewSession()">เพิ่ม</button>
@@ -79,12 +82,29 @@
 
 <script>
     window.addEventListener('DOMContentLoaded', async () => {
-        // ดักเช็คสิทธิ์ความปลอดภัยด้วย Route Guard 
         if (typeof checkAuthGuard === 'function') { 
             await checkAuthGuard(); 
         }
         loadConfig();
     });
+
+    // 🔄 ฟังก์ชันช่วยแปลงฟอร์แมตวันที่จากฐานข้อมูล (YYYY-MM-DD) ออกมาเป็นวันที่ภาษาไทยหน้าตาราง
+    function formatThaiDateDisplay(dateStr, timeStr) {
+        if (!dateStr) return "";
+        try {
+            const dateParts = dateStr.split("-");
+            if (dateParts.length !== 3) return dateStr;
+            
+            const day = parseInt(dateParts[2], 10);
+            const monthIndex = parseInt(dateParts[1], 10) - 1;
+            const yearBe = parseInt(dateParts[0], 10) + 543;
+            
+            const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            return `${day} ${thaiMonths[monthIndex]} ${yearBe} (${timeStr || 'เต็มวัน'})`;
+        } catch (e) {
+            return dateStr;
+        }
+    }
 
     // 🔄 ดึงรายการรอบอบรมจาก Supabase มากระจายลงตารางหลัก
     async function loadConfig() {
@@ -95,8 +115,8 @@
             const { data: sessions, error } = await supabaseClient
                 .from('sessions')
                 .select('*')
-                .eq('course_key', 'BLS') // คัดกรองเอาเฉพาะ BLS เท่านั้น
-                .order('training_date', { ascending: true }); // เรียงลำดับตามวันที่จัดกิจกรรมใกล้-ไกล
+                .eq('course_key', 'BLS') 
+                .order('training_date', { ascending: true }); 
                 
             if (error) throw error;
             tbody.innerHTML = '';
@@ -107,17 +127,18 @@
             }
 
             sessions.forEach(s => {
-                // ตัวเปลี่ยนสถานะเปิด-ปิดรับสมัคร (Active / Closed)
                 const statusBadge = s.status === 'Active' 
                     ? `<span class="badge bg-success status-toggle px-3 py-2" onclick="toggleSessionStatus(${s.id}, 'Closed')"><i class="fas fa-lock-open me-1"></i> เปิดรับสมัคร</span>` 
                     : `<span class="badge bg-secondary status-toggle px-3 py-2" onclick="toggleSessionStatus(${s.id}, 'Active')"><i class="fas fa-lock me-1"></i> ปิดรับสมัคร</span>`;
                 
+                const localDisplayDate = formatThaiDateDisplay(s.training_date, s.training_time);
+
                 tbody.innerHTML += `
                     <tr>
                         <td>
                             <span class="badge bg-dark mb-1"><i class="fas fa-graduation-cap me-1"></i> ${s.course_key}</span><br>
                             <b class="text-dark fs-6">${s.name}</b><br>
-                            <small class="text-primary fw-bold"><i class="far fa-calendar-alt me-1"></i> ${s.date}</small>
+                            <small class="text-primary fw-bold"><i class="far fa-calendar-alt me-1"></i> ${localDisplayDate}</small>
                         </td>
                         <td class="text-center">${statusBadge}</td>
                         <td class="text-center">
@@ -136,43 +157,43 @@
         }
     }
 
-    // ➕ ฟังก์ชันแอดเพิ่มรอบกิจกรรมอบรมใหม่
+    // ➕ ฟังก์ชันแอดเพิ่มรอบกิจกรรมอบรมใหม่ (ผสานชื่อหลักสูตร + เลขรุ่น อัตโนมัติ)
     async function addNewSession() {
-        const name = document.getElementById('newSessionName').value.trim(); 
+        const courseBase = document.getElementById('newSessionCourse').value.trim();
+        const genNo = document.getElementById('newSessionGen').value.trim();
         const rawDate = document.getElementById('newSessionDate').value; 
         const timePart = document.getElementById('newSessionTime').value; 
         const max = document.getElementById('newSessionMax').value;
         const btn = document.getElementById('btnCreateSession');
         
-        if(!name || !rawDate || !max || parseInt(max) <= 0) { 
-            Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุชื่อโครงการ วันที่จัด และจำนวนที่นั่งโควตาให้ครบถ้วนด้วยครับ', 'warning'); 
+        if(!genNo || !rawDate || !max || parseInt(max, 10) <= 0) { 
+            Swal.fire('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุเลขรุ่น วันที่จัด และจำนวนที่นั่งโควตาให้ครบถ้วนด้วยครับ', 'warning'); 
             return; 
         }
         
+        // 🌟 ประสมคำสั่งชื่อโครงการ: "BASIC LIFE SUPPORT รุ่นที่ X" 
+        const combinedName = `${courseBase} รุ่นที่ ${genNo}`;
+
         btn.disabled = true; 
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
         try {
-            // ปฏิบัติการตัดแบ่งชิ้นส่วนวันที่สากล (YYYY-MM-DD) เพื่อประกอบแปลงร่างเป็นข้อความไทยพรีเมียม
-            const dateParts = rawDate.split("-");
-            const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-            const fullDateString = `${parseInt(dateParts[2])} ${thaiMonths[parseInt(dateParts[1]) - 1]} ${parseInt(dateParts[0]) + 543} (${timePart})`; 
-
-            // ยิงข้อมูลบันทึกลงโต๊ะเซสชันของ Supabase (แยกช่องระบุประเภทตัวแปรชัดเจนเพื่อล้างบั๊ก)
             const { error } = await supabaseClient.from('sessions').insert([{ 
                 course_key: "BLS", 
-                name: name, 
-                training_date: rawDate,         // ส่งค่าปฏิทิน DATE แท้ (อุดรอยรั่ว)
-                training_time: timePart,        // ส่งช่วงเวลาเดี่ยวแยกคอลัมน์
-                date: fullDateString,           // ข้อความไทยหรู ๆ สำหรับแสดงผลโชว์หน้าจอ
-                max_seats: parseInt(max), 
-                available_seats: parseInt(max) 
+                name: combinedName,             // ส่งชื่อที่รวมเลขรุ่นแล้วเข้าช่อง name
+                training_date: rawDate,         
+                training_time: timePart,        
+                status: "Active",
+                max_seats: parseInt(max, 10), 
+                available_seats: parseInt(max, 10) 
             }]);
             
             if(error) throw error;
 
-            Swal.fire({ title: 'สำเร็จ!', text: 'เปิดรอบฝึกอบรม BLS เรียบร้อยแล้ว', icon: 'success', timer: 1500, showConfirmButton: false });
-            document.getElementById('newSessionName').value = ''; 
+            Swal.fire({ title: 'สำเร็จ!', text: `เปิดรอบฝึกอบรม ${combinedName} เรียบร้อยแล้ว`, icon: 'success', timer: 1500, showConfirmButton: false });
+            
+            // ล้างเฉพาะค่าในช่องเลขรุ่น วันที่ และจำนวนที่นั่ง (คงชื่อหลักสูตรหลักไว้)
+            document.getElementById('newSessionGen').value = ''; 
             document.getElementById('newSessionDate').value = ''; 
             document.getElementById('newSessionMax').value = ''; 
             loadConfig(); 
@@ -187,14 +208,13 @@
 
     // 💾 ฟังก์ชันกดคำนวณและอัปเดตปรับแก้จำนวนที่นั่งโควตาคงเหลือจริงแบบ Realtime
     async function updateSeatsQuota(id) {
-        const newMax = parseInt(document.getElementById(`max_${id}`).value);
+        const newMax = parseInt(document.getElementById(`max_${id}`).value, 10);
         if (isNaN(newMax) || newMax < 1) {
             Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุโควตาจำนวนที่นั่งที่ถูกต้อง', 'warning');
             return;
         }
 
         try {
-            // นับยอดผู้สมัครตัวจริงที่เข้าจองที่นั่งในรหัสรอบเซสชันนี้เรียบร้อยแล้ว
             const { count, error: countError } = await supabaseClient
                 .from('registrations')
                 .select('*', { count: 'exact', head: true })
@@ -203,9 +223,8 @@
             if (countError) throw countError;
 
             const registeredCount = count || 0;
-            const newAvailable = newMax - registeredCount; // โควตาใหม่ - ยอดลงทะเบียนปัจจุบัน = ที่นั่งเหลือสุทธิ
+            const newAvailable = newMax - registeredCount; 
 
-            // อัปเดตข้อมูลกลับสู่จุดศูนย์กลางตาราง sessions
             const { error: updateError } = await supabaseClient
                 .from('sessions')
                 .update({ max_seats: newMax, available_seats: newAvailable })
