@@ -30,6 +30,14 @@
             border: 1px solid rgba(7, 31, 84, 0.05);
         }
         
+        /* 🌟 ไม้เด็ดการแต่งรูป: บังคับกรองสีขาวส่วนเกินออกจากไฟล์ภาพเพื่อให้เนียนไปกับพื้นหลัง */
+        .logo-blend {
+            height: 125px; 
+            object-fit: contain; 
+            mix-blend-mode: multiply; 
+            filter: contrast(1.05) drop-shadow(0 2px 8px rgba(0,0,0,0.04));
+        }
+        
         /* ดีไซน์ปุ่มเมนู Corporate Style */
         .menu-btn-premium { 
             padding: 16px 20px; 
@@ -79,7 +87,7 @@
 
 <div id="authContainer" class="login-card" style="display: none;">
     <div class="text-center mb-4">
-        <img src="https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/LOGO_RJRH.png" alt="RJRH Logo" style="height: 120px; object-fit: contain;">
+        <img src="https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/LOGO_RJRH.png" alt="RJRH Logo" class="logo-blend">
         <h4 class="fw-bold text-primary mt-3">RJRH TRAINING CENTER</h4>
         <p class="text-muted small">ระบบจัดการข้อมูลสำหรับเจ้าหน้าที่ (Central Portal)</p>
     </div>
@@ -98,7 +106,7 @@
 
 <div id="menuContainer" class="menu-card" style="display: none;">
     <div class="text-center mb-4">
-        <img src="https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/LOGO_RJRH.png" alt="RJRH Premium Logo" style="height: 125px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.08));">
+        <img src="https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/LOGO_RJRH.png" alt="RJRH Premium Logo" class="logo-blend">
         <h4 class="text-gold-title mt-3 mb-1">แผงควบคุมระบบงาน</h4>
         <p class="text-muted small">ยินดีต้อนรับเจ้าหน้าที่ กรุณาเลือกเมนูที่ต้องการปฏิบัติงาน [BLS คอร์สเดี่ยว]</p>
     </div>
@@ -134,7 +142,6 @@
 
 <script src="config.js"></script>
 <script>
-    // ตรวจสอบเซสชันผู้ใช้งานทันทีที่เปิดหน้าเว็บ
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof supabaseClient === 'undefined') {
             Swal.fire('ข้อผิดพลาดวิกฤต', 'ไม่พบการตั้งค่าฐานข้อมูลใน config.js หรือสคริปต์ Supabase ไม่ทำงาน', 'error');
@@ -142,7 +149,6 @@
         }
         
         try {
-            // เช็คสถานะปัจจุบันว่าเคยล็อกอินค้างไว้หรือไม่
             const { data: { session } } = await supabaseClient.auth.getSession();
             toggleView(session);
         } catch(e) {
@@ -151,7 +157,6 @@
         }
     });
 
-    // ฟังก์ชันสับสวิตช์หน้าต่างมุมมองผู้ใช้งาน
     function toggleView(session) {
         if (session) {
             document.getElementById('authContainer').style.display = 'none';
@@ -162,7 +167,6 @@
         }
     }
 
-    // ฟังก์ชันจัดการคำสั่งล็อกอินชน Supabase Auth
     async function handleLogin(e) {
         e.preventDefault();
         const btn = document.getElementById('btnLogin');
@@ -170,7 +174,7 @@
         const password = document.getElementById('loginPassword').value;
         
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-smme-2"></span> กำลังตรวจสอบสิทธิ์...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> กำลังตรวจสอบสิทธิ์...';
 
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
