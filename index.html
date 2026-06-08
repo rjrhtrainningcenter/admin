@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Portal - RJRH TRAINING CENTER</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { 
+            --primary: #071f54; 
+            --accent: #1976d2; 
+            --gold-premium: #b38728;
+            --grad-gold: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 100%);
+        }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f0f4f8; }
+        
+        /* สไตล์หน้า Login */
+        .login-card { width: 100%; max-width: 450px; padding: 35px; border-radius: 24px; background: #fff; box-shadow: 0 20px 60px rgba(7,31,84,0.1); }
+        
+        /* สไตล์หน้า Menu แผงควบคุมระบบงาน */
+        .menu-card { 
+            width: 100%; 
+            max-width: 500px; 
+            padding: 40px; 
+            border-radius: 28px; 
+            background: #ffffff; 
+            box-shadow: 0 30px 70px rgba(7, 31, 84, 0.12); 
+            border: 1px solid rgba(7, 31, 84, 0.05);
+        }
+        
+        /* ดีไซน์ปุ่มเมนู Corporate Style */
+        .menu-btn-premium { 
+            padding: 16px 20px; 
+            border-radius: 14px; 
+            font-weight: 600; 
+            font-size: 1.05rem;
+            transition: all 0.25s ease; 
+            text-align: left; 
+            display: flex; 
+            align-items: center; 
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: #334155 !important;
+            text-decoration: none;
+        }
+        
+        /* ไอคอนสีทองหรูหรา */
+        .menu-btn-premium i {
+            color: var(--gold-premium);
+            width: 30px;
+            text-align: center;
+        }
+        
+        /* เอฟเฟกต์ Hover เปลี่ยนเป็นสีกรมท่าขอบทองดูแพง */
+        .menu-btn-premium:hover { 
+            transform: translateY(-2px); 
+            background: var(--primary);
+            border-color: #bf953f;
+            color: #ffffff !important;
+            box-shadow: 0 8px 20px rgba(7, 31, 84, 0.15);
+        }
+        
+        .menu-btn-premium:hover i {
+            color: #fcf6ba;
+        }
+
+        /* หัวข้อสีทองไล่เฉดหรูหรา */
+        .text-gold-title {
+            background: var(--grad-gold);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+
+<div id="authContainer" class="login-card" style="display: none;">
+    <div class="text-center mb-4">
+        <img src="https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/LOGO_RJRH.png" alt="RJRH Logo" style="height: 120px; object-fit: contain;">
+        <h4 class="fw-bold text-primary mt-3">RJRH TRAINING CENTER</h4>
+        <p class="text-muted small">ระบบจัดการข้อมูลสำหรับเจ้าหน้าที่ (Central Portal)</p>
+    </div>
+    <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Username / Email</label>
+            <input type="email" id="loginEmail" class="form-control form-control-lg bg-light" placeholder="admin@gmail.com" required>
+        </div>
+        <div class="mb-4">
+            <label class="form-label fw-semibold">Password</label>
+            <input type="password" id="loginPassword" class="form-control form-control-lg bg-light" placeholder="••••••••" required>
+        </div>
+        <button type="submit" id="btnLogin" class="btn btn-primary btn-lg w-100 rounded-3 fw-bold">เข้าสู่ระบบ</button>
+    </form>
+</div>
+
+<div id="menuContainer" class="menu-card" style="display: none;">
+    <div class="text-center mb-4">
+        <img src="https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/LOGO_RJRH.png" alt="RJRH Premium Logo" style="height: 125px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.08));">
+        <h4 class="text-gold-title mt-3 mb-1">แผงควบคุมระบบงาน</h4>
+        <p class="text-muted small">ยินดีต้อนรับเจ้าหน้าที่ กรุณาเลือกเมนูที่ต้องการปฏิบัติงาน [BLS คอร์สเดี่ยว]</p>
+    </div>
+    
+    <div class="d-grid gap-3">
+        <a href="checkin.html" class="menu-btn-premium">
+            <i class="fas fa-qrcode fa-lg me-3"></i> 
+            <span>1. ระบบเช็คอิน / เช็คเอาท์หน้างาน</span>
+        </a>
+        <a href="participants.html" class="menu-btn-premium">
+            <i class="fas fa-list-ul fa-lg me-3"></i> 
+            <span>2. ดูรายชื่อผู้สมัครและยิงเมลกลุ่ม</span>
+        </a>
+        <a href="sessions.html" class="menu-btn-premium">
+            <i class="fas fa-sliders-h fa-lg me-3"></i> 
+            <span>3. ตั้งค่า / เปิดรอบโครงการอบรม</span>
+        </a>
+        <a href="certificate.html" class="menu-btn-premium">
+            <i class="fas fa-award fa-lg me-3"></i> 
+            <span>4. แผงควบคุมคิวรันใบประกาศนียบัตร</span>
+        </a>
+    </div>
+    
+    <hr class="my-4" style="border-top: 1px solid #e2e8f0;">
+    <button class="btn btn-sm btn-outline-danger w-100 rounded-pill py-2 fw-bold" onclick="handleGlobalLogout()">
+        <i class="fas fa-sign-out-alt me-1"></i> ออกจากระบบอย่างปลอดภัย
+    </button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script src="config.js"></script>
+<script>
+    // ตรวจสอบเซสชันผู้ใช้งานทันทีที่เปิดหน้าเว็บ
+    window.addEventListener('DOMContentLoaded', async () => {
+        if (typeof supabaseClient === 'undefined') {
+            Swal.fire('ข้อผิดพลาดวิกฤต', 'ไม่พบการตั้งค่าฐานข้อมูลใน config.js หรือสคริปต์ Supabase ไม่ทำงาน', 'error');
+            return;
+        }
+        
+        try {
+            // เช็คสถานะปัจจุบันว่าเคยล็อกอินค้างไว้หรือไม่
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            toggleView(session);
+        } catch(e) {
+            console.error("Auth initialization check failing:", e);
+            toggleView(null);
+        }
+    });
+
+    // ฟังก์ชันสับสวิตช์หน้าต่างมุมมองผู้ใช้งาน
+    function toggleView(session) {
+        if (session) {
+            document.getElementById('authContainer').style.display = 'none';
+            document.getElementById('menuContainer').style.display = 'block';
+        } else {
+            document.getElementById('authContainer').style.display = 'block';
+            document.getElementById('menuContainer').style.display = 'none';
+        }
+    }
+
+    // ฟังก์ชันจัดการคำสั่งล็อกอินชน Supabase Auth
+    async function handleLogin(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnLogin');
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-smme-2"></span> กำลังตรวจสอบสิทธิ์...';
+
+        try {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            
+            if (error) { 
+                Swal.fire('ล็อกอินล้มเหลว', `โปรดตรวจสอบ Username หรือ Password อีกครั้ง<br><small class="text-muted">(${error.message})</small>`, 'error'); 
+                btn.disabled = false; 
+                btn.innerHTML = 'เข้าสู่ระบบ'; 
+            } else {
+                toggleView(data.session);
+                btn.disabled = false; 
+                btn.innerHTML = 'เข้าสู่ระบบ'; 
+            }
+        } catch(err) {
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ตรวจสอบสิทธิ์ได้', 'error');
+            btn.disabled = false; 
+            btn.innerHTML = 'เข้าสู่ระบบ';
+        }
+    }
+</script>
+</body>
+</html>
