@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Queue Control - RJRH TRAINING CENTER</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #071f54; --accent: #1976d2; --gold: #b38728; }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f0f4f8; }
+        .navbar { background: linear-gradient(135deg, #051336, var(--accent)); padding: 12px 0; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .preview-canvas-container { max-width: 100%; overflow-x: auto; background: #334155; padding: 20px; border-radius: 12px; text-align: center; }
+        #previewCanvas { max-width: 100%; height: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.3); background-color: #fff; }
+        .badge-queue { font-size: 0.85rem; padding: 5px 10px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark shadow-sm">
+        <div class="container d-flex justify-content-between align-items-center">
+            <span class="navbar-brand fw-bold d-flex align-items-center">
+                <i class="fas fa-award me-2"></i> RJRH - คิวรันวุฒิบัตรเดี่ยว [BLS ภาษาไทย]
+            </span>
+            <a class="btn btn-sm btn-outline-light rounded-pill px-3 fw-bold" href="index.html"><i class="fas fa-arrow-left me-1"></i> กลับหน้าเมนู</a>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4 px-md-5">
+        <div class="row g-4">
+            <!-- ฝั่งซ้าย: แผงควบคุมและตารางคิวงาน -->
+            <div class="col-lg-7 col-12">
+                <div class="card p-4 mb-4 bg-white shadow-sm">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-6 col-12">
+                            <label class="form-label fw-bold text-primary">เลือกรอบโครงการอบรมเพื่อดึงคิวงาน</label>
+                            <select id="sessionSelector" class="form-select" onchange="loadQueueData()">
+                                <option value="">-- กำลังโหลดรอบอบรม... --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 col-12 text-md-end text-center mt-md-4">
+                            <button class="btn btn-gold bg-warning fw-bold px-3 py-2 me-2 shadow-sm text-dark" onclick="processBatchGeneration()" id="btnBatchGen">
+                                <i class="fas fa-magic me-1"></i> สั่งคิวรันกลุ่ม (แถวที่เลือก)
+                            </button>
+                            <button class="btn btn-outline-secondary fw-bold px-3 py-2" onclick="loadQueueData()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-3 shadow-sm bg-white">
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="40" class="text-center">
+                                        <input type="checkbox" id="masterCheck" class="form-check-input" onchange="toggleSelectAllRows(this)">
+                                    </th>
+                                    <th>ชื่อ-นามสกุล (ไทย)</th>
+                                    <th>ข้อความวันที่บนใบเซอร์</th>
+                                    <th class="text-center" width="120">สถานะคิว</th>
+                                    <th class="text-center" width="130">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="queueTableBody">
+                                <tr><td colspan="5" class="text-center text-muted py-4">กรุณาเลือกรอบโครงการอบรมด้านบน</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ฝั่งขวา: หน้าต่างพรีวิวเทมเพลตก่อนสลักจริงด้วย Canvas -->
+            <div class="col-lg-5 col-12">
+                <div class="card p-4 bg-white shadow-sm sticky-top" style="top: 80px; z-index: 10;">
+                    <h6 class="fw-bold text-primary mb-3"><i class="far fa-eye me-2"></i>หน้าจอตรวจทานพรีเวียว (Live Preview)</h6>
+                    <div class="preview-canvas-container mb-3">
+                        <canvas id="previewCanvas" width="842" height="595"></canvas>
+                    </div>
+                    <p class="text-muted small mb-0">* ระบบจะสลักชื่อภาษาไทยและวันที่ไทยลงจุดกึ่งกลางหน้าเทมเพลตอัตโนมัติตามพิกัดโครงสร้างระบบ</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+
+<script>
+    let queueRecords = [];
+    const templateImg = new Image();
+    // ดึงรูปภาพ Template กลางจาก Storage Supabase ของนาย
+    templateImg.src = "https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/Template_BLS.png";
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        if (typeof checkAuthGuard === 'function') { await checkAuthGuard(); }
+        templateImg.onload = () => { drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 8 มิถุนายน พ.ศ. 2569"); };
+        await loadSessionsDropdown();
+    });
+
+    async function loadSessionsDropdown() {
+        const selectEl = document.getElementById('sessionSelector');
+        try {
+            const { data: sessions, error } = await supabaseClient
+                .from('sessions')
+                .select('*').eq('course_key', 'BLS').order('training_date', { ascending: false });
+            if (error) throw error;
+            selectEl.innerHTML = '<option value="">-- กรุณาเลือกรอบอบรมเพื่อดึงคิวงาน --</option>';
+            sessions.forEach(s => { selectEl.innerHTML += `<option value="${s.id}">${s.name} (${s.date})</option>`; });
+        } catch(e) { console.error(e); selectEl.innerHTML = '<option value="">-- โหลดข้อมูลรอบอบรมล้มเหลว --</option>'; }
+    }
+
+    // 📊 ดึงรายชื่อจากตารางคิววุฒิบัตร certificates_queue มาแสดงผล
+    async function loadQueueData() {
+        const sessionId = document.getElementById('sessionSelector').value;
+        const tbody = document.getElementById('queueTableBody');
+        document.getElementById('masterCheck').checked = false;
+        if (!sessionId) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">กรุณาเลือกรอบโครงการอบรมด้านบน</td></tr>'; return; }
+
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>กำลังกวาดคิวงานพิมพ์วุฒิบัตร...</td></tr>';
+        try {
+            const { data: records, error } = await supabaseClient
+                .from('certificates_queue')
+                .select('*')
+                .eq('session_id', sessionId)
+                .order('id', { ascending: true });
+
+            if (error) throw error;
+            queueRecords = records || [];
+            tbody.innerHTML = '';
+
+            if (queueRecords.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">ยังไม่มีรายชื่อเข้าสู่คิววุฒิบัตรในรอบนี้</td></tr>';
+                return;
+            }
+
+            queueRecords.forEach((r, idx) => {
+                let statusBadge = '';
+                if (r.pdf_status === 'ออกสำเร็จ' || r.pdf_status === 'sent') {
+                    statusBadge = `<span class="badge bg-success badge-queue"><i class="fas fa-check-circle me-1"></i> ออกสำเร็จ</span>`;
+                } else if (r.pdf_status === 'กำลังเจน' || r.pdf_status === 'รอเจน') {
+                    statusBadge = `<span class="badge bg-warning text-dark badge-queue"><i class="fas fa-spinner fa-spin me-1"></i> รอผลิตไฟล์</span>`;
+                } else {
+                    statusBadge = `<span class="badge bg-secondary badge-queue">${r.pdf_status}</span>`;
+                }
+
+                let checkboxDisabled = (r.pdf_status === 'ออกสำเร็จ' || r.pdf_status === 'sent') ? 'disabled' : '';
+                let actionBtn = r.certificate_url 
+                    ? `<a href="${r.certificate_url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`
+                    : `<button class="btn btn-sm btn-primary fw-bold" onclick="previewSpecificRow(${idx})"><i class="far fa-eye"></i> พรีวิว</button>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="text-center"><input type="checkbox" class="form-check-input row-select" ${checkboxDisabled} data-idx="${idx}" data-regid="${r.registration_id}"></td>
+                        <td><b class="text-dark">${r.full_name_th}</b></td>
+                        <td><small class="text-muted">${r.training_date_display || ''}</small></td>
+                        <td class="text-center" id="q_status_${r.registration_id}">${statusBadge}</td>
+                        <td class="text-center" id="q_action_${r.registration_id}">${actionBtn}</td>
+                    </tr>`;
+            });
+        } catch(err) { console.error(err); tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">โหลดข้อมูลคิวงานไม่สำเร็จ</td></tr>'; }
+    }
+
+    function toggleSelectAllRows(master) {
+        document.querySelectorAll('.row-select:not(:disabled)').forEach(cb => cb.checked = master.checked);
+    }
+
+    function previewSpecificRow(idx) {
+        const item = queueRecords[idx];
+        if (item) drawPreview(item.full_name_th, item.training_date_display);
+    }
+
+    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas
+    function drawPreview(name, dateStr) {
+        const canvas = document.getElementById('previewCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
+
+        // 1. สลักชื่อ-นามสกุลไทย (เซ็ตฟอนต์มาตรฐานระบบ และจัดให้อยู่กึ่งกลางหน้ากระดาษพอดีเป๊ะ)
+        ctx.font = "bold 32px 'Sarabun', 'Tahoma', sans-serif";
+        ctx.fillStyle = "#071f54"; 
+        ctx.textAlign = "center";
+        ctx.fillText(name, canvas.width / 2, 290); // พิกัดแกน Y อยู่กึ่งกลางแนวระนาบชื่อ
+
+        // 2. สลักข้อความวันที่ไทย
+        ctx.font = "italic 18px 'Sarabun', 'Tahoma', sans-serif";
+        ctx.fillStyle = "#334155";
+        ctx.fillText(dateStr, canvas.width / 2, 350); // พิกัดแกน Y ถอยเยื้องลงมาด้านล่างตัวชื่อ
+    }
+
+    // 🚀 ปฏิบัติการรันกลุ่ม ส่งสัญญาณ Payload ไปสั่งงาน GAS สลักคีย์ไฟล์จริงลงไดรฟ์
+    async function processBatchGeneration() {
+        const selectedBoxes = document.querySelectorAll('.row-select:checked');
+        if (selectedBoxes.length === 0) { Swal.fire('คำแนะนำ', 'กรุณาเลือกติ๊กรายชื่อในคิวงานที่ต้องการสั่งรันผลิตไฟล์ PDF อย่างน้อย 1 คนครับ', 'info'); return; }
+        if (selectedBoxes.length > 40) { Swal.fire('ข้อจำกัดระบบ', 'เพื่อป้องกันระบบเกตเวย์กูเกิ้ลตัดสายค้าง แนะนำให้สั่งรันกลุ่มละไม่เกิน 40 รายชื่อต่อครั้งครับ', 'warning'); return; }
+
+        const confirmCheck = await Swal.fire({
+            title: 'ยืนยันการสั่งคิวรันกลุ่ม?',
+            text: `ระบบจะทำการส่งรายชื่อจำนวน ${selectedBoxes.length} คน เข้าสู่สายพานการพิมพ์วุฒิบัตร PDF ของ Google Apps Script`,
+            icon: 'question', showCancelButton: true, confirmButtonColor: '#b38728', confirmButtonText: 'เริ่มรันคิวผลิตไฟล์', cancelButtonText: 'ยกเลิก'
+        });
+        if (!confirmCheck.isConfirmed) return;
+
+        const mainBtn = document.getElementById('btnBatchGen');
+        mainBtn.disabled = true;
+        let successRun = 0;
+
+        for (let i = 0; i < selectedBoxes.length; i++) {
+            const cb = selectedBoxes[i];
+            const idx = cb.getAttribute('data-idx');
+            const regId = cb.getAttribute('data-regid');
+            const item = queueRecords[idx];
+
+            mainBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>กำลังผลิตคิวที่ ${i+1}/${selectedBoxes.length}: ${item.full_name_th}`;
+            
+            const cellStatus = document.getElementById(`q_status_${regId}`);
+            cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> กำลังทำไฟล์...</span>`;
+
+            try {
+                // ยิง Payload ตรงเข้าหาฟังก์ชัน doPost (Route 3) ของฝั่ง GAS หลักโดยตรงในรูปแบบ URL-encoded ทลายกำแพง CORS 
+                const response = await fetch(MAIN_REG_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: "postData=" + encodeURIComponent(JSON.stringify({
+                        action: "checkOutSuccess",
+                        id: String(regId).trim()
+                    }))
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    successRun++;
+                    cellStatus.innerHTML = `<span class="badge bg-success badge-queue"><i class="fas fa-check-circle me-1"></i> ออกสำเร็จ</span>`;
+                    document.getElementById(`q_action_${regId}`).innerHTML = `<a href="${result.url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`;
+                    cb.checked = false; 
+                } else {
+                    throw new Error(result.error || "เฟล");
+                }
+            } catch(e) {
+                console.error(e);
+                cellStatus.innerHTML = `<span class="badge bg-danger text-white badge-queue">ผลิตล้มเหลว</span>`;
+            }
+        }
+
+        mainBtn.disabled = false;
+        mainBtn.innerHTML = `<i class="fas fa-magic me-1"></i> สั่งคิวรันกลุ่ม (แถวที่เลือก)`;
+        Swal.fire('ปฏิบัติการเสร็จสิ้น', `ระบบทำการสลักและแปลงไฟล์ PDF วุฒิบัตรสำเร็จสุทธิเรียบร้อยจำนวน ${successRun} รายการครับนาย`, 'success');
+        loadQueueData();
+    }
+</script>
+</body>
+</html>
