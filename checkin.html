@@ -67,7 +67,8 @@
     let isProcessing = false;
     let fetchedRecords = []; 
 
-    const CHECKIN_API_URL = typeof GOOGLE_SHEET_API !== 'undefined' ? GOOGLE_SHEET_API : "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec";
+    // 🟢 อัปเดตผูกลิงก์ API ล่าสุดของนายเพื่อสลักเข้าท่อระบายข้อมูลโดยตรง
+    const CHECKIN_API_URL = "https://script.google.com/macros/s/AKfycbw53ccpJF1NV7neias4TI7D5P66i4b2CKpFuk82RCKMHngAe3QpHmwx52ZcoXWD9On1hg/exec";
 
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof checkAuthGuard === 'function') {
@@ -285,27 +286,37 @@
             let finalGenNo = user.session_id ? Number(user.session_id) : 1;
 
             if (selectedMode === "IN") {
-                // 🟢 คลีนที่สุด: อัปเดต Supabase ตารางเดียวตรงๆ ปล่อยผ่านตารางคิวไปก่อนเพื่อหน้างานลื่นไหล
+                // 1. อัปเดตตัวแปรเช็คอินลงตาราง registrations บน Supabase ด่านแรก
                 const { error: updateError } = await supabaseClient
                     .from('registrations')
                     .update({ is_checked_in: true, checked_in_at: nowTime })
                     .eq('id', user.id);
                 if (updateError) throw updateError;
 
-                // สั่งยิงแต้มชีตวันที่ภาษาไทย
-                try {
-                    await fetch(CHECKIN_API_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({
-                            action: "checkInSuccess",
-                            id: String(user.id).trim(),
-                            course_key: String(user.course_key || 'BLS').trim(),
-                            genNo: finalGenNo
-                        })
-                    });
-                } catch(gasErr) { console.error("GAS Sync:", gasErr); }
+                // 2. 🚀 เปลี่ยนโหมดเป็นเปิดเผยข้อความเปิดช่องรับการตอบกลับแจ้งเตือน Error ของ GAS ทุกสเต็ป
+                const response = await fetch(CHECKIN_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        action: "checkInSuccess",
+                        id: String(user.id).trim(),
+                        course_key: String(user.course_key || 'BLS').trim(),
+                        genNo: finalGenNo
+                    })
+                });
+
+                const resData = await response.json();
+                
+                // 🔴 หากฝั่ง GAS ติดล็อก STEP 1-4 ตัวดักจับจะสั่ง Rollback ทันทีและฟ้องหน้าเว็บตรงนี้
+                if (!resData.success) {
+                    // ปลดสถานะเช็คอินบน Supabase คืนค่าเดิม (Rollback หน้าบ้าน)
+                    await supabaseClient
+                        .from('registrations')
+                        .update({ is_checked_in: false, checked_in_at: null })
+                        .eq('id', user.id);
+                    
+                    throw new Error(resData.error || "GAS ประมวลผลล้มเหลว");
+                }
 
                 courseCard.innerHTML = `
                     <div class="alert alert-success border-success text-center mb-0 py-3 fw-bold">
@@ -316,19 +327,19 @@
             } 
             else {
                 // โหมดเช็คเอาท์
-                try {
-                    await fetch(CHECKIN_API_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({
-                            action: "checkOutSuccess",
-                            id: String(user.id).trim(),
-                            course_key: String(user.course_key || 'BLS').trim(),
-                            genNo: finalGenNo
-                        })
-                    });
-                } catch(gasErr) { console.warn("GAS Engine Active"); }
+                const response = await fetch(CHECKIN_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        action: "checkOutSuccess",
+                        id: String(user.id).trim(),
+                        course_key: String(user.course_key || 'BLS').trim(),
+                        genNo: finalGenNo
+                    })
+                });
+                
+                const resData = await response.json();
+                if (!resData.success) throw new Error(resData.error || "GAS สลักไฟล์ล้มเหลว");
 
                 Swal.fire({
                     title: 'บันทึกเช็คเอาท์สำเร็จ!',
