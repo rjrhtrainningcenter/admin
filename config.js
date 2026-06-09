@@ -7,19 +7,17 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ========================================================================
 // 📡 GOOGLE APPS SCRIPT WEB APP APIS: พิกัดสำหรับยิงไปฝั่ง Automation
 // ========================================================================
-// URL ของ GAS บัญชีหลักตัวล่าสุดของนาย (คุมระบบสมัครออนไลน์ และระบบสแกนเช็คอิน)
-const MAIN_REG_API_URL = "https://script.google.com/macros/s/AKfycbw-U9InsFm7MlEWzlaeNIhfYlJuiqVF3uSPNJcrJgpNtZp54805YOiW9pJ-B6EDXQ0/exec";
+// 🟢 อัปเดตแก้บั๊ก: สลับมาใช้ลิงก์ Web App แอดมินตัวใหม่ล่าสุด (ที่สลักชื่อไทย, แตกคิว, แยกโฟลเดอร์รุ่น)
+const MAIN_REG_API_URL = "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec";
 const GOOGLE_SHEET_API = MAIN_REG_API_URL; 
-
-// ✂️ เอาฟังก์ชัน CERT_BLS_API ออกชั่วคราวตามสั่ง เพื่อป้องกันระบบแอร์ล็อกซ้อนบั๊กครับนาย
 
 // ========================================================================
 // ✉️ MULTI-ACCOUNT MAIL GATEWAYS: อาร์เรย์อีเมลแอดมินสำหรับกระจายโควตายิงเมลกลุ่ม
 // ========================================================================
-// 🌟 เคลียร์เหลือ 2 ตัวเน้นๆ: ตู้หลักของนาย ผนึกกำลังร่วมกับตู้สำรองตัวใหม่ล่าสุดเพียงตู้เดียวเท่านั้นครับ
+// 🌟 ล็อกเป้าหมายตู้ยิงเมลใบประกาศ (สำหรับหน้า participants.html) ใช้ 2 บัญชีหลัก-รองของนาย
 const GAS_WEB_APP_URLS = [
-    "https://script.google.com/macros/s/AKfycbw-U9InsFm7MlEWzlaeNIhfYlJuiqVF3uSPNJcrJgpNtZp54805YOiW9pJ-B6EDXQ0/exec", // 🟢 เมลที่ 1 (ตู้หลักล่าสุด)
-    "https://script.google.com/macros/s/AKfycbwEqswvbSQ2_dn19ZwbGpmP3zoDmO4nYM2eZuq0xR3E91gdSBYBAEOr8J2QtWOmwcl4/exec"  // 🟡 เมลที่ 2 (ตู้สำรองใหม่ตัวเดียวที่นายส่งมาให้)
+    "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec", // 🟢 เมลที่ 1 (ตู้แอดมินหลักล่าสุด)
+    "https://script.google.com/macros/s/AKfycbwEqswvbSQ2_dn19ZwbGpmP3zoDmO4nYM2eZuq0xR3E91gdSBYBAEOr8J2QtWOmwcl4/exec"  // 🟡 เมลที่ 2 (ตู้แอดมินสำรอง)
 ];
 
 // ========================================================================
