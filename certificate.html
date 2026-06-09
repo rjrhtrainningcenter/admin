@@ -30,7 +30,6 @@
 
     <div class="container-fluid py-4 px-md-5">
         <div class="row g-4">
-            <!-- ฝั่งซ้าย: แผงควบคุมและตารางคิวงาน -->
             <div class="col-lg-7 col-12">
                 <div class="card p-4 mb-4 bg-white shadow-sm">
                     <div class="row g-3 align-items-center">
@@ -62,7 +61,7 @@
                                     <th>ชื่อ-นามสกุล (ไทย)</th>
                                     <th>ข้อความวันที่บนใบเซอร์</th>
                                     <th class="text-center" width="120">สถานะคิว</th>
-                                    <th class="text-center" width="130">จัดการ</th>
+                                    <th class="text-center" width="160">จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody id="queueTableBody">
@@ -73,7 +72,6 @@
                 </div>
             </div>
 
-            <!-- ฝั่งขวา: หน้าต่างพรีวิวเทมเพลตก่อนสลักจริงด้วย Canvas -->
             <div class="col-lg-5 col-12">
                 <div class="card p-4 bg-white shadow-sm sticky-top" style="top: 80px; z-index: 10;">
                     <h6 class="fw-bold text-primary mb-3"><i class="far fa-eye me-2"></i>หน้าจอตรวจทานพรีเวียว (Live Preview)</h6>
@@ -101,10 +99,8 @@
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof checkAuthGuard === 'function') { try { await checkAuthGuard(); } catch(e){} }
         
-        // วาดภาพพื้นหลังเปล่ารอไว้ตอนเริ่มระบบ
         templateImg.onload = () => { drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 9 มิถุนายน พ.ศ. 2569"); };
         
-        // ดักจับกรณีรูปภาพโหลดล้มเหลวป้องกัน Broken State ในรอบแรก
         templateImg.onerror = () => { 
             console.warn("⚠️ ไม่สามารถดึงไฟล์ภาพจากคลัง Cloud ได้ชั่วคราว ระบบจะเปิดใช้งานโหมด Safe-Mode");
             drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 9 มิถุนายน พ.ศ. 2569");
@@ -125,7 +121,6 @@
         } catch(e) { console.error(e); selectEl.innerHTML = '<option value="">-- โหลดข้อมูลรอบอบรมล้มเหลว --</option>'; }
     }
 
-    // 📊 ดึงรายชื่อจากตารางคิววุฒิบัตรและแมปเข้าคู่กับฐานข้อมูลลงทะเบียนจริง
     async function loadQueueData() {
         const sessionId = document.getElementById('sessionSelector').value;
         const tbody = document.getElementById('queueTableBody');
@@ -134,7 +129,6 @@
 
         tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>กำลังกวาดคิวงานพิมพ์วุฒิบัตร...</td></tr>';
         try {
-            // 1. ดึงคิวทั้งหมดที่แมตช์ตามรอบอบรมนี้จาก certificates_queue
             const { data: qRecords, error: qError } = await supabaseClient
                 .from('certificates_queue')
                 .select('*')
@@ -143,7 +137,6 @@
 
             if (qError) throw qError;
 
-            // 2. ดึงประวัติทะเบียนชื่อภาษาไทยจริงของรอบนี้จากตาราง registrations มาเชื่อมโยงคู่ขนาน
             const { data: rRecords, error: rError } = await supabaseClient
                 .from('registrations')
                 .select('id, prefix, full_name_th')
@@ -186,9 +179,21 @@
 
                 let checkboxDisabled = (r.pdf_status === 'ออกสำเร็จ' || r.pdf_status === 'sent') ? 'disabled' : '';
                 
-                let actionBtn = r.certificate_url 
-                    ? `<a href="${r.certificate_url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`
-                    : `<button class="btn btn-sm btn-primary fw-bold" onclick="previewSpecificRow(${idx})"><i class="far fa-eye"></i> พรีวิว</button>`;
+                // ⚡ จัดการแสดงบล็อกคู่ปุ่ม พรีวิว + สร้างใบประกาศรายคน
+                let actionBtn = '';
+                if (r.certificate_url) {
+                    actionBtn = `<a href="${r.certificate_url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold w-100"><i class="fas fa-file-pdf me-1"></i> ดู PDF</a>`;
+                } else {
+                    actionBtn = `
+                        <div class="d-flex gap-1 justify-content-center">
+                            <button class="btn btn-sm btn-primary fw-bold" onclick="previewSpecificRow(${idx})" title="ดูตัวอย่างพรีวิว">
+                                <i class="far fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-success fw-bold" id="btn_single_${r.registration_id}" onclick="processSingleGeneration(${idx}, '${r.registration_id}')">
+                                <i class="fas fa-magic me-1"></i>สร้างเดี่ยว
+                            </button>
+                        </div>`;
+                }
 
                 tbody.innerHTML += `
                     <tr>
@@ -202,13 +207,8 @@
                     </tr>`;
             });
 
-            // ปล่อยคิวพรีวิวแถวแรกแบบเซฟโหมด (Safe Call เพื่อสกัดแรงกระแทกของ InvalidStateError)
             if (queueRecords.length > 0) {
-                try {
-                    previewSpecificRow(0);
-                } catch(canvasErr) {
-                    console.warn("⚠️ ระบบข้ามออโต้พรีวิวแถวแรกเพื่อเสถียรภาพของหน้าต่างบอร์ด:", canvasErr);
-                }
+                try { previewSpecificRow(0); } catch(canvasErr) { console.warn("Canvas warning:", canvasErr); }
             }
 
         } catch(err) { console.error(err); tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">โหลดข้อมูลคิวงานไม่สำเร็จ</td></tr>'; }
@@ -225,7 +225,7 @@
         }
     }
 
-    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas (ฉบับบดขยี้ InvalidStateError อย่างเด็ดขาด)
+    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas (ปรับแก้จุดพิกัดขยับเยื้องลงมาด้านล่าง)
     function drawPreview(name, dateStr) {
         const canvas = document.getElementById('previewCanvas');
         const ctx = canvas.getContext('2d');
@@ -233,7 +233,6 @@
         
         let isImageDrawSuccess = false;
 
-        // 🟢 ชั้นป้องกันสูงสุด: ครอบครอบคำสั่งวาดรูปด้วยโครงสร้างพรีเซ็ต Try-Catch
         try {
             const isImageOK = templateImg.complete && templateImg.naturalWidth !== 0;
             if (isImageOK) {
@@ -241,35 +240,77 @@
                 isImageDrawSuccess = true;
             }
         } catch (canvasException) {
-            console.warn("🛡️ ตรวจพบสัญญาณภาพแตกชั่วคราวขณะประมวลผล สลับการทำงานไปหา Safe-Mode หลัก");
             isImageDrawSuccess = false;
         }
 
-        // 🛡️ Safe-Mode: กรณีภาพแตกหรือพัง วาดหน้าจำลองสีน้ำเงินกรมท่าขึ้นมารับแรงแทน เพื่อปิดช่องล็อกไม่ให้เว็บล่ม
         if (!isImageDrawSuccess) {
-            ctx.fillStyle = "#1e293b";
+            ctx.fillStyle = "#faf8f5";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            ctx.strokeStyle = "#b38728";
-            ctx.lineWidth = 10;
-            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
-            
-            ctx.font = "italic 16px 'Sarabun', sans-serif";
-            ctx.fillStyle = "#94a3b8";
-            ctx.textAlign = "left";
-            ctx.fillText("[ ระบบเปิดใช้ Safe-Mode Preview เนื่องจากรูปพื้นหลังในคลัง Cloud กำลังดาวน์โหลด ]", 40, 50);
+            ctx.strokeStyle = "#d4af37";
+            ctx.lineWidth = 6;
+            ctx.strokeRect(30, 30, canvas.width - 60, canvas.height - 60);
         }
 
-        // 1. สลักชื่อไทยตรงจุดกึ่งกลางหน้ากระดาษพรีวิวพอดีเป๊ะ
-        ctx.font = "bold 32px 'Sarabun', 'Tahoma', sans-serif";
-        ctx.fillStyle = isImageDrawSuccess ? "#071f54" : "#ffffff"; 
+        // --- 🗜️ โซนปรับพิกัดเลื่อนข้อความเพื่อหลบโลโก้ตรงกลางวุฒิบัตรวอลเปเปอร์หลัก ---
+        
+        // 1. สลักชื่อไทย (ย้ายจาก 295 ดิ่งลงมาอยู่ที่พิกัดความสูง 370 เพื่อให้อยู่ใต้คำว่า 'ขอมอบเกียรติบัตรฉบับนี้เพื่อแสดงว่า')
+        ctx.font = "bold 34px 'Sarabun', 'Tahoma', sans-serif";
+        ctx.fillStyle = "#071f54"; 
         ctx.textAlign = "center";
-        ctx.fillText(name, canvas.width / 2, 295); 
+        ctx.fillText(name, canvas.width / 2, 370); 
 
-        // 2. สลักข้อความวันที่ไทยเต็มรูปแบบข้างใต้ชื่อคีย์
-        ctx.font = "400 18px 'Sarabun', 'Tahoma', sans-serif";
-        ctx.fillStyle = isImageDrawSuccess ? "#334155" : "#cbd5e1";
-        ctx.fillText(dateStr, canvas.width / 2, 355); 
+        // 2. สลักข้อความวันที่ไทย (ย้ายจาก 355 ดิ่งลงมาอยู่ที่พิกัดความสูง 500 เพื่อให้อยู่ด้านล่างสุดของใบเซอร์)
+        ctx.font = "400 16px 'Sarabun', 'Tahoma', sans-serif";
+        ctx.fillStyle = isImageDrawSuccess ? "#2d3748" : "#475569";
+        ctx.fillText(dateStr, canvas.width / 2, 500); 
+    }
+
+    // ⚡ ฟังก์ชันสำหรับกดสั่งผลิตใบประกาศแยกเดี่ยวรายบุคคลหน้างาน
+    async function processSingleGeneration(idx, regId) {
+        const item = queueRecords[idx];
+        const currentSessionId = document.getElementById('sessionSelector').value;
+        const singleBtn = document.getElementById(`btn_single_${regId}`);
+        const cellStatus = document.getElementById(`q_status_${regId}`);
+        const cellAction = document.getElementById(`q_action_${regId}`);
+
+        if(singleBtn) singleBtn.disabled = true;
+        if(cellStatus) cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> กำลังผลิตไฟล์...</span>`;
+
+        const TARGET_ADMIN_API = "https://script.google.com/macros/s/AKfycbw53ccpJF1NV7neias4TI7D5P66i4b2CKpFuk82RCKMHngAe3QpHmwx52ZcoXWD9On1hg/exec";
+
+        try {
+            const response = await fetch(TARGET_ADMIN_API, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: "checkOutSuccess",
+                    id: String(regId).trim(),
+                    course_key: "BLS",
+                    genNo: Number(currentSessionId) 
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                Swal.fire({
+                    title: 'สำเร็จ!',
+                    text: `ผลิตใบประกาศของ ${item.full_name_th_combined} เรียบร้อยแล้ว`,
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+                
+                cellStatus.innerHTML = `<span class="badge bg-success badge-queue"><i class="fas fa-check-circle me-1"></i> ออกสำเร็จ</span>`;
+                cellAction.innerHTML = `<a href="${result.url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold w-100"><i class="fas fa-file-pdf"></i> ดู PDF</a>`;
+            } else {
+                throw new Error(result.error || "ระบบขัดข้องหลังบ้าน");
+            }
+        } catch(e) {
+            console.error(e);
+            Swal.fire('ผลิตล้มเหลว', e.message, 'error');
+            if(cellStatus) cellStatus.innerHTML = `<span class="badge bg-danger text-white badge-queue">ผลิตล้มเหลว</span>`;
+            if(singleBtn) singleBtn.disabled = false;
+        }
     }
 
     // 🚀 โหมดรันกลุ่ม: ยิงข้อมูลตรงดิ่งเข้าหาเกตเวย์อัปเดตท่อใหม่ของแอดมิน
@@ -291,7 +332,6 @@
         mainBtn.disabled = true;
         let successRun = 0;
 
-        // ลิงก์ปลายทางแกนหลักที่ได้รับการพิสูจน์แล้วว่าเชื่อมตรงเข้าหาท่ออัปเดตล่าสุดของนาย
         const TARGET_ADMIN_API = "https://script.google.com/macros/s/AKfycbw53ccpJF1NV7neias4TI7D5P66i4b2CKpFuk82RCKMHngAe3QpHmwx52ZcoXWD9On1hg/exec";
 
         for (let i = 0; i < selectedBoxes.length; i++) {
@@ -320,7 +360,7 @@
                 if (result.success) {
                     successRun++;
                     cellStatus.innerHTML = `<span class="badge bg-success badge-queue"><i class="fas fa-check-circle me-1"></i> ออกสำเร็จ</span>`;
-                    document.getElementById(`q_action_${regId}`).innerHTML = `<a href="${result.url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`;
+                    document.getElementById(`q_action_${regId}`).innerHTML = `<a href="${result.url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold w-100"><i class="fas fa-file-pdf"></i> ดู PDF</a>`;
                     cb.checked = false; 
                 } else {
                     throw new Error(result.error || "ระบบขัดข้องหลังบ้าน");
