@@ -102,7 +102,6 @@
         } catch (e) { return dateStr; }
     }
 
-    // 🔄 โหลดรายชื่อรอบโครงการเรียน BLS ทั้งหมดลง Dropdown (แก้บั๊ก null สำเร็จ)
     async function loadSessionsDropdown() {
         const selectEl = document.getElementById('sessionFilter');
         try {
@@ -122,7 +121,6 @@
             selectEl.innerHTML = '<option value="">-- กรุณาเลือกรอบอบรมเพื่อดึงรายชื่อ --</option>';
             sessions.forEach(s => {
                 const displayDate = formatThaiDateDisplay(s.training_date);
-                // 🟢 ดึงจากชื่อแมตช์เต็มตรงคอลัมน์ name ไม่ติดค่า null แน่นอนครับ
                 selectEl.innerHTML += `<option value="${s.id}">${s.name} (${displayDate || 'ไม่ระบุวัน'})</option>`;
             });
         } catch(e) {
@@ -131,7 +129,6 @@
         }
     }
 
-    // 📊 ฟังก์ชันกวาดข้อมูลสองตารางมาควบรวมระเบียบแถวรายชื่อ
     async function loadParticipants() {
         const sessionId = document.getElementById('sessionFilter').value;
         const tbody = document.getElementById('participantTableBody');
@@ -146,7 +143,7 @@
         tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>กำลังดึงข้อมูลและแมปปิ้งโครงสร้างรายชื่อ...</td></tr>';
 
         try {
-            // 1. ดึงผู้สมัครที่ผูกกับตัวเลข ID รุ่นนี้
+            // 1. ดึงผู้สมัครประจำรุ่นจากตาราง registrations
             const { data: regs, error: regError } = await supabaseClient
                 .from('registrations')
                 .select('*')
@@ -155,7 +152,7 @@
 
             if (regError) throw regError;
 
-            // 2. ดึงคิวใบเซอร์มาชนคู่สายขนาน
+            // 2. ดึงข้อมูลคิวงานจากตาราง certificates_queue มาชนคู่แบบขนาน
             const { data: queue, error: qError } = await supabaseClient
                 .from('certificates_queue')
                 .select('*')
@@ -171,9 +168,21 @@
             }
 
             regs.forEach(r => {
-                // ผูกข้อมูลผ่าน registration_id คลีนๆ
+                // ค้นหาแถวคิวงานที่แมตช์ผ่านรหัส registration_id
                 const qItem = queue ? queue.find(q => String(q.registration_id) === String(r.id)) : null;
                 
+                // 🟢 [BUG FIX ENGINE]: ตรรกะดึงชื่อผู้เรียนขั้นสูง ป้องกันชื่อแตกหรือแสดงผลว่างเปล่า
+                let finalFullNameTH = "";
+                if (qItem && qItem.full_name_th) {
+                    // ดึงชื่อเต็มที่รวมคำนำหน้าที่ปั๊มเก็บไว้ในตารางคิวเรียบร้อยแล้วมาโชว์ (แม่นยำที่สุด)
+                    finalFullNameTH = qItem.full_name_th;
+                } else {
+                    // หากยังไม่มีคิวสลัก ให้ใช้ระบบกอบกู้ดึงจากทะเบียนหลักมาประกอบร่างสดๆ
+                    const prefix = r.prefix || "";
+                    const firstName = r.full_name_th || r.name || "";
+                    finalFullNameTH = (prefix + firstName).trim() || "ไม่พบข้อมูลชื่อ";
+                }
+
                 let checkInStatus = r.is_checked_in 
                     ? `<span class="badge bg-success badge-status"><i class="fas fa-check me-1"></i> มาเรียน</span>` 
                     : `<span class="badge bg-secondary badge-status text-white">❌ ขาดเรียน</span>`;
@@ -197,24 +206,23 @@
                     }
                 }
 
-                // แอดมินติ๊กเลือกได้เฉพาะคนที่สถานะพร้อมยิงเมล
+                // แอดมินติ๊กเลือกส่งอีเมลได้เฉพาะคนที่สถานะออกไฟล์เสร็จสมบูรณ์แล้วเท่านั้น
                 let checkboxDisabled = (qItem && (qItem.pdf_status === "ออกสำเร็จ" || qItem.pdf_status === "sent")) ? "" : "disabled";
-                let currentPrefix = r.prefix || "";
 
                 tbody.innerHTML += `
                     <tr>
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input row-checkbox" ${checkboxDisabled}
                                 data-id="${r.id}" 
-                                data-name="${currentPrefix}${r.full_name_th}" 
-                                data-email="${r.email}" 
+                                data-name="${finalFullNameTH}" 
+                                data-email="${r.email || ''}" 
                                 data-pdf="${qItem ? (qItem.certificate_url || '') : ''}" 
                                 data-cerno="${qItem ? (qItem.cer_no || '') : ''}">
                         </td>
                         <td><code>${r.id}</code></td>
-                        <td><b class="text-dark">${currentPrefix}${r.full_name_th}</b></td>
+                        <td><b class="text-dark">${finalFullNameTH}</b></td>
                         <td>${r.phone || 'N/A'}</td>
-                        <td><small>${r.email}</small></td>
+                        <td><small>${r.email || 'N/A'}</small></td>
                         <td class="text-center">${checkInStatus}</td>
                         <td class="text-center" id="status_cell_${r.id}">${certStatus}</td>
                         <td class="text-center" id="pdf_cell_${r.id}">${pdfLink}</td>
@@ -232,7 +240,6 @@
         checkboxes.forEach(cb => cb.checked = master.checked);
     }
 
-    // 🚀 ระบบวนรอบยิงสลับตู้ส่งจดหมายอัจฉริยะ (Multi-Account)
     async function dispatchBulkEmails() {
         const checkboxes = document.querySelectorAll('.row-checkbox:checked');
         if (checkboxes.length === 0) {
@@ -303,7 +310,6 @@
                         sentSuccess = true;
                         successCount++;
                         
-                        // ซิงค์บันทึกกลับไปยัง Supabase คิวงาน
                         await supabaseClient
                             .from('certificates_queue')
                             .update({ pdf_status: 'sent' })
@@ -312,7 +318,6 @@
                         statusCell.innerHTML = `<span class="badge bg-info text-white badge-status"><i class="fas fa-paper-plane me-1"></i> ส่งเมลแล้ว</span>`;
                         cb.checked = false; 
                     } else if (resJson.error === "quota_exceeded" || resJson.quota_exceeded) {
-                        // 🚨 ตู้ส่งหลักเต็ม ขยับไปใช้ตู้ส่งสำรองถัดไปทันที
                         activeMailAccountIndex = (activeMailAccountIndex + 1) % GAS_WEB_APP_URLS.length;
                         currentGasUrl = GAS_WEB_APP_URLS[activeMailAccountIndex];
                         attempts++;
