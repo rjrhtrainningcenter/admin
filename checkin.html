@@ -15,10 +15,6 @@
         #reader { width: 100%; border-radius: 15px; overflow: hidden; background-color: #000; }
         .loader { display: none; text-align: center; padding: 20px; }
         .course-badge { font-size: 0.85rem; padding: 6px 12px; border-radius: 8px; }
-        .bg-light-success { background-color: #e8f5e9; }
-        .bg-light-info { background-color: #e3f2fd; }
-        .btn-print-cert { background-color: #00cae3; color: #fff; border: none; transition: all 0.3s; }
-        .btn-print-cert:hover { background-color: #00b2c9; color: #fff; transform: translateY(-1px); }
     </style>
 </head>
 <body>
@@ -71,7 +67,6 @@
     let isProcessing = false;
     let fetchedRecords = []; 
 
-    // ผูกลิงก์ท่อหลักเข้าหาตัวแปรส่วนกลางใน config.js อัตโนมัติ ป้องกันสายหลุด 404
     const CHECKIN_API_URL = typeof GOOGLE_SHEET_API !== 'undefined' ? GOOGLE_SHEET_API : "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec";
 
     window.addEventListener('DOMContentLoaded', async () => {
@@ -147,14 +142,6 @@
         const selectedMode = document.querySelector('input[name="scanMode"]:checked').value;
         const resultDiv = document.getElementById('actionResult'); 
         resultDiv.style.display = 'none';
-
-        if (typeof supabaseClient === 'undefined') {
-            Swal.fire('ข้อผิดพลาด', 'ไม่พบการตั้งค่าฐานข้อมูล Supabase กรุณาตรวจสอบไฟล์ config.js', 'error');
-            document.getElementById('searchLoader').style.display = 'none';
-            if(btnManual) btnManual.disabled = false;
-            isProcessing = false;
-            return;
-        }
 
         try {
             let isNumber = /^\d+$/.test(searchQuery);
@@ -267,7 +254,6 @@
             htmlContent += `</div></div></div>`;
             resultDiv.style.display = 'block';
             resultDiv.innerHTML = htmlContent;
-
             document.getElementById('searchInput').value = "";
 
         } catch (e) {
@@ -298,17 +284,15 @@
             let nowTime = new Date().toISOString();
             let finalGenNo = user.session_id ? Number(user.session_id) : 1;
 
-            // ====================================================================
-            // ☀️ [โหมดเช็คอิน - IN]: ตอกบัตรลง Supabase แล้วปล่อยให้ Trigger แตกแถวเข้าคิวคาร์ดออโต้
-            // ====================================================================
             if (selectedMode === "IN") {
+                // 🟢 คลีนที่สุด: อัปเดต Supabase ตารางเดียวตรงๆ ปล่อยผ่านตารางคิวไปก่อนเพื่อหน้างานลื่นไหล
                 const { error: updateError } = await supabaseClient
                     .from('registrations')
                     .update({ is_checked_in: true, checked_in_at: nowTime })
                     .eq('id', user.id);
                 if (updateError) throw updateError;
 
-                // ยิงรีเควสไปหา GAS แอดมินหลัก เพื่อลงบันทึกในแผ่นชีตรุ่นย่อ (ปรับฟอร์แมตทะลวงกำแพง CORS แบบ no-cors)
+                // สั่งยิงแต้มชีตวันที่ภาษาไทย
                 try {
                     await fetch(CHECKIN_API_URL, {
                         method: 'POST',
@@ -321,19 +305,17 @@
                             genNo: finalGenNo
                         })
                     });
-                } catch(gasErr) { console.error("GAS เช็คอินส่งคิวหลังบ้าน:", gasErr); }
+                } catch(gasErr) { console.error("GAS Sync:", gasErr); }
 
                 courseCard.innerHTML = `
                     <div class="alert alert-success border-success text-center mb-0 py-3 fw-bold">
-                        <i class="fas fa-check-circle me-1"></i> บันทึกเช็คอินรุ่นย่อ [${user.course_key || 'BLS'}-${finalGenNo}] สำเร็จและลิ้งก์ระบบคิวใบเซอร์เรียบร้อย!
+                        <i class="fas fa-check-circle me-1"></i> เช็คอินเข้าห้องเรียนรุ่น [${user.course_key || 'BLS'}-${finalGenNo}] สำเร็จเสร็จสิ้น!
                     </div>`;
 
                 user.is_checked_in = true;
             } 
-            // ====================================================================
-            // 🌙 [โหมดเช็คเอาท์ - OUT]: สั่งตัดคิวสลักไฟล์ PDF และ Purge สไลด์จำลอง
-            // ====================================================================
             else {
+                // โหมดเช็คเอาท์
                 try {
                     await fetch(CHECKIN_API_URL, {
                         method: 'POST',
@@ -346,9 +328,7 @@
                             genNo: finalGenNo
                         })
                     });
-                } catch(gasErr) { 
-                    console.warn("GAS แจ้งเตือน: กำลังสลักไฟล์ PDF รายรุ่นอยู่เบื้องหลัง");
-                }
+                } catch(gasErr) { console.warn("GAS Engine Active"); }
 
                 Swal.fire({
                     title: 'บันทึกเช็คเอาท์สำเร็จ!',
