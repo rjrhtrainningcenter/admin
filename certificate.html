@@ -30,13 +30,12 @@
 
     <div class="container-fluid py-4 px-md-5">
         <div class="row g-4">
-            <!-- ฝั่งซ้าย: แผงควบคุมและตารางคิวงาน -->
             <div class="col-lg-7 col-12">
                 <div class="card p-4 mb-4 bg-white shadow-sm">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-6 col-12">
                             <label class="form-label fw-bold text-primary">เลือกรอบโครงการอบรมเพื่อดึงคิวงาน</label>
-                            <select id="sessionSelector" class="form-select" onchange="loadQueueData()">
+                            <select id="sessionSelector" class="form-select select-lg" onchange="loadQueueData()">
                                 <option value="">-- กำลังโหลดรอบอบรม... --</option>
                             </select>
                         </div>
@@ -73,7 +72,6 @@
                 </div>
             </div>
 
-            <!-- ฝั่งขวา: หน้าต่างพรีวิวเทมเพลตก่อนสลักจริงด้วย Canvas -->
             <div class="col-lg-5 col-12">
                 <div class="card p-4 bg-white shadow-sm sticky-top" style="top: 80px; z-index: 10;">
                     <h6 class="fw-bold text-primary mb-3"><i class="far fa-eye me-2"></i>หน้าจอตรวจทานพรีเวียว (Live Preview)</h6>
@@ -94,12 +92,13 @@
 <script>
     let queueRecords = [];
     const templateImg = new Image();
-    // ดึงรูปภาพ Template กลางจาก Storage Supabase ของนาย
+    
+    // ดึงรูปภาพ Template สำหรับใช้ทำ Live Preview หน้าจอแอดมิน
     templateImg.src = "https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/Template_BLS.png";
 
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof checkAuthGuard === 'function') { await checkAuthGuard(); }
-        templateImg.onload = () => { drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 8 มิถุนายน พ.ศ. 2569"); };
+        templateImg.onload = () => { drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "On Jun 9, 2026 (Training day)"); };
         await loadSessionsDropdown();
     });
 
@@ -108,10 +107,10 @@
         try {
             const { data: sessions, error } = await supabaseClient
                 .from('sessions')
-                .select('*').eq('course_key', 'BLS').order('training_date', { ascending: false });
+                .select('*').eq('course_key', 'BLS').order('id', { ascending: true });
             if (error) throw error;
             selectEl.innerHTML = '<option value="">-- กรุณาเลือกรอบอบรมเพื่อดึงคิวงาน --</option>';
-            sessions.forEach(s => { selectEl.innerHTML += `<option value="${s.id}">${s.name} (${s.date})</option>`; });
+            sessions.forEach(s => { selectEl.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
         } catch(e) { console.error(e); selectEl.innerHTML = '<option value="">-- โหลดข้อมูลรอบอบรมล้มเหลว --</option>'; }
     }
 
@@ -127,8 +126,8 @@
             const { data: records, error } = await supabaseClient
                 .from('certificates_queue')
                 .select('*')
-                .eq('session_id', sessionId)
-                .order('id', { ascending: true });
+                .eq('session_id', Number(sessionId))
+                .order('registration_id', { ascending: true });
 
             if (error) throw error;
             queueRecords = records || [];
@@ -143,22 +142,25 @@
                 let statusBadge = '';
                 if (r.pdf_status === 'ออกสำเร็จ' || r.pdf_status === 'sent') {
                     statusBadge = `<span class="badge bg-success badge-queue"><i class="fas fa-check-circle me-1"></i> ออกสำเร็จ</span>`;
-                } else if (r.pdf_status === 'กำลังเจน' || r.pdf_status === 'รอเจน') {
+                } else if (r.pdf_status === 'กำลังเจน' || r.pdf_status === 'รอเจน' || r.pdf_status === 'คิวว่าง') {
                     statusBadge = `<span class="badge bg-warning text-dark badge-queue"><i class="fas fa-spinner fa-spin me-1"></i> รอผลิตไฟล์</span>`;
                 } else {
                     statusBadge = `<span class="badge bg-secondary badge-queue">${r.pdf_status}</span>`;
                 }
 
                 let checkboxDisabled = (r.pdf_status === 'ออกสำเร็จ' || r.pdf_status === 'sent') ? 'disabled' : '';
+                
                 let actionBtn = r.certificate_url 
                     ? `<a href="${r.certificate_url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`
                     : `<button class="btn btn-sm btn-primary fw-bold" onclick="previewSpecificRow(${idx})"><i class="far fa-eye"></i> พรีวิว</button>`;
 
                 tbody.innerHTML += `
                     <tr>
-                        <td class="text-center"><input type="checkbox" class="form-check-input row-select" ${checkboxDisabled} data-idx="${idx}" data-regid="${r.registration_id}"></td>
-                        <td><b class="text-dark">${r.full_name_th}</b></td>
-                        <td><small class="text-muted">${r.training_date_display || ''}</small></td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input row-select" ${checkboxDisabled} data-idx="${idx}" data-regid="${r.registration_id}">
+                        </td>
+                        <td><b class="text-dark">${r.full_name_en || 'ไม่มีชื่อไทย'}</b></td>
+                        <td><small class="text-muted">${r.training_date || ''}</small></td>
                         <td class="text-center" id="q_status_${r.registration_id}">${statusBadge}</td>
                         <td class="text-center" id="q_action_${r.registration_id}">${actionBtn}</td>
                     </tr>`;
@@ -172,38 +174,40 @@
 
     function previewSpecificRow(idx) {
         const item = queueRecords[idx];
-        if (item) drawPreview(item.full_name_th, item.training_date_display);
+        if (item) drawPreview(item.full_name_en, item.training_date);
     }
 
-    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas
+    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas (สำหรับพรีวิว)
     function drawPreview(name, dateStr) {
         const canvas = document.getElementById('previewCanvas');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
 
-        // 1. สลักชื่อ-นามสกุลไทย (เซ็ตฟอนต์มาตรฐานระบบ และจัดให้อยู่กึ่งกลางหน้ากระดาษพอดีเป๊ะ)
-        ctx.font = "bold 32px 'Sarabun', 'Tahoma', sans-serif";
+        // 1. สลักชื่อ-นามสกุล
+        ctx.font = "bold 30px 'Sarabun', 'Tahoma', sans-serif";
         ctx.fillStyle = "#071f54"; 
         ctx.textAlign = "center";
-        ctx.fillText(name, canvas.width / 2, 290); // พิกัดแกน Y อยู่กึ่งกลางแนวระนาบชื่อ
+        ctx.fillText(name, canvas.width / 2, 290); 
 
-        // 2. สลักข้อความวันที่ไทย
-        ctx.font = "italic 18px 'Sarabun', 'Tahoma', sans-serif";
+        // 2. สลักข้อความวันที่
+        ctx.font = "italic 16px 'Sarabun', 'Tahoma', sans-serif";
         ctx.fillStyle = "#334155";
-        ctx.fillText(dateStr, canvas.width / 2, 350); // พิกัดแกน Y ถอยเยื้องลงมาด้านล่างตัวชื่อ
+        ctx.fillText(dateStr, canvas.width / 2, 350); 
     }
 
-    // 🚀 ปฏิบัติการรันกลุ่ม ส่งสัญญาณ Payload ไปสั่งงาน GAS สลักคีย์ไฟล์จริงลงไดรฟ์
+    // 🚀 โหมดกู้ภัยรันกลุ่ม: ส่งคำสั่ง JSON ดิบ ทะลวงตรงเข้า GAS แอดมินหลัก
     async function processBatchGeneration() {
         const selectedBoxes = document.querySelectorAll('.row-select:checked');
-        if (selectedBoxes.length === 0) { Swal.fire('คำแนะนำ', 'กรุณาเลือกติ๊กรายชื่อในคิวงานที่ต้องการสั่งรันผลิตไฟล์ PDF อย่างน้อย 1 คนครับ', 'info'); return; }
-        if (selectedBoxes.length > 40) { Swal.fire('ข้อจำกัดระบบ', 'เพื่อป้องกันระบบเกตเวย์กูเกิ้ลตัดสายค้าง แนะนำให้สั่งรันกลุ่มละไม่เกิน 40 รายชื่อต่อครั้งครับ', 'warning'); return; }
+        const currentSessionId = document.getElementById('sessionSelector').value;
+
+        if (selectedBoxes.length === 0) { Swal.fire('แนะนำหน้างาน', 'กรุณาเลือกติ๊กรายชื่อในคิวงานที่ต้องการสั่งสั่งผลิตไฟล์ PDF อย่างน้อย 1 คนครับ', 'info'); return; }
+        if (selectedBoxes.length > 40) { Swal.fire('ข้อจำกัดระบบ', 'เพื่อความเสถียรของเกตเวย์ แนะนำให้สั่งรันกลุ่มละไม่เกิน 40 รายชื่อต่อครั้งครับ', 'warning'); return; }
 
         const confirmCheck = await Swal.fire({
-            title: 'ยืนยันการสั่งคิวรันกลุ่ม?',
-            text: `ระบบจะทำการส่งรายชื่อจำนวน ${selectedBoxes.length} คน เข้าสู่สายพานการพิมพ์วุฒิบัตร PDF ของ Google Apps Script`,
-            icon: 'question', showCancelButton: true, confirmButtonColor: '#b38728', confirmButtonText: 'เริ่มรันคิวผลิตไฟล์', cancelButtonText: 'ยกเลิก'
+            title: 'สั่งคิวรันกู้ภัยระบบ (Manual Bypass)?',
+            text: `ระบบจะส่งรายชื่อจำนวน ${selectedBoxes.length} คน เข้าไปสลักและออกไฟล์ PDF วุฒิบัตรตรงบน Google Sheets แยกแท็บรุ่นย่อยอัตโนมัติ`,
+            icon: 'warning', showCancelButton: true, confirmButtonColor: '#b38728', confirmButtonText: 'บังคับออกใบประกาศ', cancelButtonText: 'ยกเลิก'
         });
         if (!confirmCheck.isConfirmed) return;
 
@@ -211,26 +215,30 @@
         mainBtn.disabled = true;
         let successRun = 0;
 
+        // ดึงที่อยู่พิกัดท่อเกตเวย์แอดมินตัวใหม่จาก config.js
+        const TARGET_ADMIN_API = typeof MAIN_REG_API_URL !== 'undefined' ? MAIN_REG_API_URL : "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec";
+
         for (let i = 0; i < selectedBoxes.length; i++) {
             const cb = selectedBoxes[i];
             const idx = cb.getAttribute('data-idx');
             const regId = cb.getAttribute('data-regid');
             const item = queueRecords[idx];
 
-            mainBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>กำลังผลิตคิวที่ ${i+1}/${selectedBoxes.length}: ${item.full_name_th}`;
+            mainBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>กำลังผลิตไฟล์ ${i+1}/${selectedBoxes.length}: ${item.full_name_en}`;
             
             const cellStatus = document.getElementById(`q_status_${regId}`);
-            cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> กำลังทำไฟล์...</span>`;
+            cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> บุกเบิกไฟล์...</span>`;
 
             try {
-                // ยิง Payload ตรงเข้าหาฟังก์ชัน doPost (Route 3) ของฝั่ง GAS หลักโดยตรงในรูปแบบ URL-encoded ทลายกำแพง CORS 
-                const response = await fetch(MAIN_REG_API_URL, {
+                // 🟢 เปลี่ยนวิธีส่ง: ยิงส่งเป็น JSON ดิบตรงเข้าท่อ GAS แอดมินหลัก (Route 2: checkOutSuccess)
+                const response = await fetch(TARGET_ADMIN_API, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: "postData=" + encodeURIComponent(JSON.stringify({
+                    body: JSON.stringify({
                         action: "checkOutSuccess",
-                        id: String(regId).trim()
-                    }))
+                        id: String(regId).trim(),
+                        course_key: "BLS",
+                        genNo: Number(currentSessionId) // ผูกข้ามท่อไปหาแผ่นชีตรุ่นย่อตรงล็อกเป๊ะ
+                    })
                 });
 
                 const result = await response.json();
@@ -240,7 +248,7 @@
                     document.getElementById(`q_action_${regId}`).innerHTML = `<a href="${result.url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`;
                     cb.checked = false; 
                 } else {
-                    throw new Error(result.error || "เฟล");
+                    throw new Error(result.error || "ขัดข้อง");
                 }
             } catch(e) {
                 console.error(e);
@@ -250,7 +258,7 @@
 
         mainBtn.disabled = false;
         mainBtn.innerHTML = `<i class="fas fa-magic me-1"></i> สั่งคิวรันกลุ่ม (แถวที่เลือก)`;
-        Swal.fire('ปฏิบัติการเสร็จสิ้น', `ระบบทำการสลักและแปลงไฟล์ PDF วุฒิบัตรสำเร็จสุทธิเรียบร้อยจำนวน ${successRun} รายการครับนาย`, 'success');
+        Swal.fire('ปฏิบัติการกู้ภัยเสร็จสิ้น', `ระบบสั่งพิมพ์ไฟล์ PDF วุฒิบัตรและลบไฟล์จำลองรายรุ่นสำเร็จเสร็จสิ้นจำนวน ${successRun} รายการครับนาย`, 'success');
         loadQueueData();
     }
 </script>
