@@ -30,12 +30,11 @@
 
     <div class="container-fluid py-4 px-md-5">
         <div class="row g-4">
-            <!-- ฝั่งซ้าย: แผงควบคุมและตารางคิวงาน -->
             <div class="col-lg-7 col-12">
                 <div class="card p-4 mb-4 bg-white shadow-sm">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-6 col-12">
-                            <label class="form-label fw-bold text-primary">เลือกรอบโครงการอบรมเพื่อดึงคิวงาน</label>
+                            <label class="form-label fw-bold text-primary">Leorรอบโครงการอบรมเพื่อดึงคิวงาน</label>
                             <select id="sessionSelector" class="form-select select-lg" onchange="loadQueueData()">
                                 <option value="">-- กำลังโหลดรอบอบรม... --</option>
                             </select>
@@ -73,7 +72,6 @@
                 </div>
             </div>
 
-            <!-- ฝั่งขวา: หน้าต่างพรีวิวเทมเพลตก่อนสลักจริงด้วย Canvas -->
             <div class="col-lg-5 col-12">
                 <div class="card p-4 bg-white shadow-sm sticky-top" style="top: 80px; z-index: 10;">
                     <h6 class="fw-bold text-primary mb-3"><i class="far fa-eye me-2"></i>หน้าจอตรวจทานพรีเวียว (Live Preview)</h6>
@@ -99,7 +97,7 @@
     templateImg.src = "https://cpiwdnbcuotmhtbhuzce.supabase.co/storage/v1/object/public/picture/Template_BLS.png";
 
     window.addEventListener('DOMContentLoaded', async () => {
-        if (typeof checkAuthGuard === 'function') { await checkAuthGuard(); }
+        if (typeof checkAuthGuard === 'function') { try { await checkAuthGuard(); } catch(e){} }
         // วาดภาพพื้นหลังเปล่ารอไว้ตอนเริ่มระบบ
         templateImg.onload = () => { drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 9 มิถุนายน พ.ศ. 2569"); };
         await loadSessionsDropdown();
@@ -152,16 +150,22 @@
             }
 
             queueRecords.forEach((r, idx) => {
-                // 🟢 ดึงชื่อภาษาไทยจริงมาผูกเข้าคู่ผ่าน registration_id ดักบั๊ก null 
+                // 🟢 ดึงชื่อภาษาไทยจากตารางคิวตรงๆ หรือตารางหลักป้องกันสายหลุด
                 const matchReg = rRecords ? rRecords.find(reg => String(reg.id) === String(r.registration_id)) : null;
                 
-                // กำหนดตัวแปรสำหรับใช้วาดภาพพรีวิวและส่งต่อหลังบ้าน
-                let prefixStr = matchReg ? (matchReg.prefix || "") : "";
-                let nameThStr = matchReg ? (matchReg.full_name_th || "ไม่ระบุชื่อ") : (r.full_name_en || "ไม่ระบุชื่อ");
-                r.full_name_th_combined = (prefixStr + nameThStr).trim();
+                let combinedName = "";
+                if(r.full_name_th) {
+                    combinedName = r.full_name_th;
+                } else if(matchReg) {
+                    combinedName = ((matchReg.prefix || "") + (matchReg.full_name_th || "")).trim();
+                } else {
+                    combinedName = "ไม่ระบุชื่อ";
+                }
+                r.full_name_th_combined = combinedName;
 
-                // ปรับแต่งข้อความวันที่กรณีดึงจาก Cloud หลุดคีย์
-                let dateDisplay = r.training_date || "วันที่อบรมประจำรุ่น";
+                // 🟢 อัปเดตคีย์วันที่ให้ตรงสถาปัตยกรรมคิวใหม่ (training_date_display)
+                let dateDisplay = r.training_date_display || r.training_date || "ให้ไว้ ณ วันที่ประจำรุ่น";
+                r.final_date_text = dateDisplay;
 
                 let statusBadge = '';
                 if (r.pdf_status === 'ออกสำเร็จ' || r.pdf_status === 'sent') {
@@ -190,7 +194,6 @@
                     </tr>`;
             });
 
-            // ออโต้พรีวิวชื่อแถวแรกขึ้นบอร์ดฝั่งขวาเพื่อให้หน้าจอไม่ว่างเปล่าชั่วคราว
             if(queueRecords.length > 0) { previewSpecificRow(0); }
 
         } catch(err) { console.error(err); tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">โหลดข้อมูลคิวงานไม่สำเร็จ</td></tr>'; }
@@ -203,9 +206,7 @@
     function previewSpecificRow(idx) {
         const item = queueRecords[idx];
         if (item) {
-            // ดึงค่าวันที่ส่งไปแปลงเป็นวันที่ไทยเต็มหน้าจอพรีวิว
-            let displayDateText = "ให้ไว้ ณ วันที่ 9 มิถุนายน พ.ศ. 2569"; 
-            drawPreview(item.full_name_th_combined, displayDateText);
+            drawPreview(item.full_name_th_combined, item.final_date_text);
         }
     }
 
@@ -215,32 +216,31 @@
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // วาดรูปพื้นหลังวุฒิบัตรหลัก
         ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
 
-        // 1. สลักชื่อ-นามสกุลไทยลงกึ่งกลางหน้ากระดาษพรีวิวพอดีเป๊ะ
+        // 1. สลักชื่อไทยตรงจุดกึ่งกลางหน้ากระดาษ
         ctx.font = "bold 32px 'Sarabun', 'Tahoma', sans-serif";
         ctx.fillStyle = "#071f54"; 
         ctx.textAlign = "center";
         ctx.fillText(name, canvas.width / 2, 295); 
 
-        // 2. สลักข้อความวันที่ไทย
+        // 2. สลักข้อความวันที่ไทยเต็มรูปแบบ
         ctx.font = "400 18px 'Sarabun', 'Tahoma', sans-serif";
         ctx.fillStyle = "#334155";
         ctx.fillText(dateStr, canvas.width / 2, 355); 
     }
 
-    // 🚀 โหมดกู้ภัยรันกลุ่ม: ส่งคำสั่ง JSON ดิบ ทะลวงตรงเข้า GAS แอดมินหลัก
+    // 🚀 โหมดกู้ภัยรันกลุ่ม: ยิงสัญญาณตรงเข้าหาท่ออัปเดตแกนใหม่
     async function processBatchGeneration() {
         const selectedBoxes = document.querySelectorAll('.row-select:checked');
         const currentSessionId = document.getElementById('sessionSelector').value;
 
         if (selectedBoxes.length === 0) { Swal.fire('แนะนำหน้างาน', 'กรุณาเลือกติ๊กรายชื่อในคิวงานที่ต้องการสั่งผลิตไฟล์ PDF อย่างน้อย 1 คนครับ', 'info'); return; }
-        if (selectedBoxes.length > 40) { Swal.fire('ข้อจำกัดระบบ', 'เพื่อความเสถียรของเกตเวย์ แนะนำให้สั่งรันกลุ่มละไม่เกิน 40 รายชื่อต่อครั้งครับ', 'warning'); return; }
+        if (selectedBoxes.length > 40) { Swal.fire('ข้อจำกัดระบบ', 'เพื่อความเสถียรของระบบ แนะนำให้สั่งรันกลุ่มละไม่เกิน 40 รายชื่อต่อครั้งครับ', 'warning'); return; }
 
         const confirmCheck = await Swal.fire({
-            title: 'สั่งคิวรันกู้ภัยระบบ (Manual Bypass)?',
-            text: `ระบบจะส่งรายชื่อจำนวน ${selectedBoxes.length} คน เข้าไปสลักและออกไฟล์ PDF วุฒิบัตรตรงบน Google Sheets แยกแท็บรุ่นย่อยอัตโนมัติ`,
+            title: 'สั่งคิวรันกลุ่มผลิตใบเซอร์?',
+            text: `ระบบจะส่งรายชื่อจำนวน ${selectedBoxes.length} คน เข้าไปประมวลผลสลัก Template สไลด์และออก PDF แยกโฟลเดอร์รุ่นย่อยออโต้`,
             icon: 'warning', showCancelButton: true, confirmButtonColor: '#b38728', confirmButtonText: 'บังคับออกใบประกาศ', cancelButtonText: 'ยกเลิก'
         });
         if (!confirmCheck.isConfirmed) return;
@@ -249,7 +249,8 @@
         mainBtn.disabled = true;
         let successRun = 0;
 
-        const TARGET_ADMIN_API = typeof MAIN_REG_API_URL !== 'undefined' ? MAIN_REG_API_URL : "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec";
+        // 🟢 เปลี่ยนลิงก์ปลายทางหลักให้เกาะพิกัด GAS แอดมินใหม่ที่นายให้มาล่าสุดทันทีเพื่อตัดปัญหา 404
+        const TARGET_ADMIN_API = "https://script.google.com/macros/s/AKfycbw53ccpJF1NV7neias4TI7D5P66i4b2CKpFuk82RCKMHngAe3QpHmwx52ZcoXWD9On1hg/exec";
 
         for (let i = 0; i < selectedBoxes.length; i++) {
             const cb = selectedBoxes[i];
@@ -260,9 +261,10 @@
             mainBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>กำลังผลิตไฟล์ ${i+1}/${selectedBoxes.length}: ${item.full_name_th_combined}`;
             
             const cellStatus = document.getElementById(`q_status_${regId}`);
-            cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> บุกเบิกไฟล์...</span>`;
+            cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> สลักไฟล์...</span>`;
 
             try {
+                // เปลี่ยนไปยิงส่งตรงและรองรับการรอประมวลผล JSON ดิบจากหลังบ้าน
                 const response = await fetch(TARGET_ADMIN_API, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -280,7 +282,7 @@
                     document.getElementById(`q_action_${regId}`).innerHTML = `<a href="${result.url}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold"><i class="fas fa-file-pdf"></i> ดู PDF</a>`;
                     cb.checked = false; 
                 } else {
-                    throw new Error(result.error || "ขัดข้อง");
+                    throw new Error(result.error || "ระบบขัดข้องหลังบ้าน");
                 }
             } catch(e) {
                 console.error(e);
@@ -290,7 +292,7 @@
 
         mainBtn.disabled = false;
         mainBtn.innerHTML = `<i class="fas fa-magic me-1"></i> สั่งคิวรันกลุ่ม (แถวที่เลือก)`;
-        Swal.fire('ปฏิบัติการกู้ภัยเสสิ้น', `ระบบสั่งพิมพ์ไฟล์ PDF วุฒิบัตรและลบไฟล์จำลองรายรุ่นสำเร็จเสร็จสิ้นจำนวน ${successRun} รายการครับนาย`, 'success');
+        Swal.fire('ปฏิบัติการเสร็จสิ้น', `ระบบสั่งพิมพ์ไฟล์ PDF วุฒิบัตรเสร็จสิ้นจำนวน ${successRun} รายการเรียบร้อยครับนาย`, 'success');
         loadQueueData();
     }
 </script>
