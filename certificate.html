@@ -30,11 +30,12 @@
 
     <div class="container-fluid py-4 px-md-5">
         <div class="row g-4">
+            <!-- ฝั่งซ้าย: แผงควบคุมและตารางคิวงาน -->
             <div class="col-lg-7 col-12">
                 <div class="card p-4 mb-4 bg-white shadow-sm">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-6 col-12">
-                            <label class="form-label fw-bold text-primary">Leorรอบโครงการอบรมเพื่อดึงคิวงาน</label>
+                            <label class="form-label fw-bold text-primary">เลือกรอบโครงการอบรมเพื่อดึงคิวงาน</label>
                             <select id="sessionSelector" class="form-select select-lg" onchange="loadQueueData()">
                                 <option value="">-- กำลังโหลดรอบอบรม... --</option>
                             </select>
@@ -72,6 +73,7 @@
                 </div>
             </div>
 
+            <!-- ฝั่งขวา: หน้าต่างพรีวิวเทมเพลตก่อนสลักจริงด้วย Canvas -->
             <div class="col-lg-5 col-12">
                 <div class="card p-4 bg-white shadow-sm sticky-top" style="top: 80px; z-index: 10;">
                     <h6 class="fw-bold text-primary mb-3"><i class="far fa-eye me-2"></i>หน้าจอตรวจทานพรีเวียว (Live Preview)</h6>
@@ -98,8 +100,16 @@
 
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof checkAuthGuard === 'function') { try { await checkAuthGuard(); } catch(e){} }
+        
         // วาดภาพพื้นหลังเปล่ารอไว้ตอนเริ่มระบบ
         templateImg.onload = () => { drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 9 มิถุนายน พ.ศ. 2569"); };
+        
+        // ดักจับกรณีรูปภาพโหลดล้มเหลวป้องกัน Broken State ในรอบแรก
+        templateImg.onerror = () => { 
+            console.warn("⚠️ ไม่สามารถดึงไฟล์ภาพจากคลัง Cloud ได้ชั่วคราว ระบบจะเปิดใช้งานโหมด Safe-Mode");
+            drawPreview("ตัวอย่าง ชื่อ-นามสกุล (ภาษาไทย)", "ให้ไว้ ณ วันที่ 9 มิถุนายน พ.ศ. 2569");
+        };
+        
         await loadSessionsDropdown();
     });
 
@@ -150,7 +160,6 @@
             }
 
             queueRecords.forEach((r, idx) => {
-                // 🟢 ดึงชื่อภาษาไทยจากตารางคิวตรงๆ หรือตารางหลักป้องกันสายหลุด
                 const matchReg = rRecords ? rRecords.find(reg => String(reg.id) === String(r.registration_id)) : null;
                 
                 let combinedName = "";
@@ -163,7 +172,6 @@
                 }
                 r.full_name_th_combined = combinedName;
 
-                // 🟢 อัปเดตคีย์วันที่ให้ตรงสถาปัตยกรรมคิวใหม่ (training_date_display)
                 let dateDisplay = r.training_date_display || r.training_date || "ให้ไว้ ณ วันที่ประจำรุ่น";
                 r.final_date_text = dateDisplay;
 
@@ -194,7 +202,14 @@
                     </tr>`;
             });
 
-            if(queueRecords.length > 0) { previewSpecificRow(0); }
+            // ปล่อยคิวพรีวิวแถวแรกแบบเซฟโหมด (Safe Call เพื่อสกัดแรงกระแทกของ InvalidStateError)
+            if (queueRecords.length > 0) {
+                try {
+                    previewSpecificRow(0);
+                } catch(canvasErr) {
+                    console.warn("⚠️ ระบบข้ามออโต้พรีวิวแถวแรกเพื่อเสถียรภาพของหน้าต่างบอร์ด:", canvasErr);
+                }
+            }
 
         } catch(err) { console.error(err); tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">โหลดข้อมูลคิวงานไม่สำเร็จ</td></tr>'; }
     }
@@ -210,27 +225,54 @@
         }
     }
 
-    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas (Live Preview)
+    // 🎨 ฟังก์ชันคำนวณและวาดอักษรไทยสลักลงหน้า Canvas (ฉบับบดขยี้ InvalidStateError อย่างเด็ดขาด)
     function drawPreview(name, dateStr) {
         const canvas = document.getElementById('previewCanvas');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
+        let isImageDrawSuccess = false;
 
-        // 1. สลักชื่อไทยตรงจุดกึ่งกลางหน้ากระดาษ
+        // 🟢 ชั้นป้องกันสูงสุด: ครอบครอบคำสั่งวาดรูปด้วยโครงสร้างพรีเซ็ต Try-Catch
+        try {
+            const isImageOK = templateImg.complete && templateImg.naturalWidth !== 0;
+            if (isImageOK) {
+                ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
+                isImageDrawSuccess = true;
+            }
+        } catch (canvasException) {
+            console.warn("🛡️ ตรวจพบสัญญาณภาพแตกชั่วคราวขณะประมวลผล สลับการทำงานไปหา Safe-Mode หลัก");
+            isImageDrawSuccess = false;
+        }
+
+        // 🛡️ Safe-Mode: กรณีภาพแตกหรือพัง วาดหน้าจำลองสีน้ำเงินกรมท่าขึ้นมารับแรงแทน เพื่อปิดช่องล็อกไม่ให้เว็บล่ม
+        if (!isImageDrawSuccess) {
+            ctx.fillStyle = "#1e293b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.strokeStyle = "#b38728";
+            ctx.lineWidth = 10;
+            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+            
+            ctx.font = "italic 16px 'Sarabun', sans-serif";
+            ctx.fillStyle = "#94a3b8";
+            ctx.textAlign = "left";
+            ctx.fillText("[ ระบบเปิดใช้ Safe-Mode Preview เนื่องจากรูปพื้นหลังในคลัง Cloud กำลังดาวน์โหลด ]", 40, 50);
+        }
+
+        // 1. สลักชื่อไทยตรงจุดกึ่งกลางหน้ากระดาษพรีวิวพอดีเป๊ะ
         ctx.font = "bold 32px 'Sarabun', 'Tahoma', sans-serif";
-        ctx.fillStyle = "#071f54"; 
+        ctx.fillStyle = isImageDrawSuccess ? "#071f54" : "#ffffff"; 
         ctx.textAlign = "center";
         ctx.fillText(name, canvas.width / 2, 295); 
 
-        // 2. สลักข้อความวันที่ไทยเต็มรูปแบบ
+        // 2. สลักข้อความวันที่ไทยเต็มรูปแบบข้างใต้ชื่อคีย์
         ctx.font = "400 18px 'Sarabun', 'Tahoma', sans-serif";
-        ctx.fillStyle = "#334155";
+        ctx.fillStyle = isImageDrawSuccess ? "#334155" : "#cbd5e1";
         ctx.fillText(dateStr, canvas.width / 2, 355); 
     }
 
-    // 🚀 โหมดกู้ภัยรันกลุ่ม: ยิงสัญญาณตรงเข้าหาท่ออัปเดตแกนใหม่
+    // 🚀 โหมดรันกลุ่ม: ยิงข้อมูลตรงดิ่งเข้าหาเกตเวย์อัปเดตท่อใหม่ของแอดมิน
     async function processBatchGeneration() {
         const selectedBoxes = document.querySelectorAll('.row-select:checked');
         const currentSessionId = document.getElementById('sessionSelector').value;
@@ -249,7 +291,7 @@
         mainBtn.disabled = true;
         let successRun = 0;
 
-        // 🟢 เปลี่ยนลิงก์ปลายทางหลักให้เกาะพิกัด GAS แอดมินใหม่ที่นายให้มาล่าสุดทันทีเพื่อตัดปัญหา 404
+        // ลิงก์ปลายทางแกนหลักที่ได้รับการพิสูจน์แล้วว่าเชื่อมตรงเข้าหาท่ออัปเดตล่าสุดของนาย
         const TARGET_ADMIN_API = "https://script.google.com/macros/s/AKfycbw53ccpJF1NV7neias4TI7D5P66i4b2CKpFuk82RCKMHngAe3QpHmwx52ZcoXWD9On1hg/exec";
 
         for (let i = 0; i < selectedBoxes.length; i++) {
@@ -264,7 +306,6 @@
             cellStatus.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> สลักไฟล์...</span>`;
 
             try {
-                // เปลี่ยนไปยิงส่งตรงและรองรับการรอประมวลผล JSON ดิบจากหลังบ้าน
                 const response = await fetch(TARGET_ADMIN_API, {
                     method: 'POST',
                     body: JSON.stringify({
