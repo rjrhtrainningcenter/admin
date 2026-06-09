@@ -257,12 +257,12 @@
         ctx.font = "bold 34px 'Sarabun', 'Tahoma', sans-serif";
         ctx.fillStyle = "#071f54"; 
         ctx.textAlign = "center";
-        ctx.fillText(name, canvas.width / 2, 370); 
+        ctx.fillText(name, canvas.width / 2, 220); 
 
         // 2. สลักข้อความวันที่ไทย (ย้ายจาก 355 ดิ่งลงมาอยู่ที่พิกัดความสูง 500 เพื่อให้อยู่ด้านล่างสุดของใบเซอร์)
         ctx.font = "400 16px 'Sarabun', 'Tahoma', sans-serif";
         ctx.fillStyle = isImageDrawSuccess ? "#2d3748" : "#475569";
-        ctx.fillText(dateStr, canvas.width / 2, 500); 
+        ctx.fillText(dateStr, canvas.width / 2, 370); 
     }
 
     // ⚡ ฟังก์ชันสำหรับกดสั่งผลิตใบประกาศแยกเดี่ยวรายบุคคลหน้างาน
