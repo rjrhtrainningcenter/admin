@@ -28,12 +28,11 @@
     </nav>
 
     <div class="container-fluid py-4 px-md-5">
-        <!-- แผงตัวกรองและปุ่มสั่งการหลัก -->
         <div class="card p-4 mb-4 bg-white shadow-sm">
             <div class="row g-3 align-items-center">
                 <div class="col-md-4 col-12">
                     <label class="form-label fw-bold text-primary">เลือกรอบโครงการอบรมเพื่อดูรายชื่อ</label>
-                    <select id="sessionFilter" class="form-select" onchange="loadParticipants()">
+                    <select id="sessionFilter" class="form-select select-lg" onchange="loadParticipants()">
                         <option value="">-- กำลังโหลดรอบอบรม... --</option>
                     </select>
                 </div>
@@ -48,7 +47,6 @@
             </div>
         </div>
 
-        <!-- ตารางรายชื่อผู้เรียนแบบ Merged Data -->
         <div class="card p-3 shadow-sm bg-white">
             <div class="table-responsive">
                 <table class="table align-middle" id="participantTable">
@@ -81,7 +79,8 @@
 
 <script>
     let currentSessionId = "";
-    let activeMailAccountIndex = 0; // ล็อกเป้าหมายเริ่มต้นที่ตู้เมลหลักบัญชีแรก (index 0)
+    let activeMailAccountIndex = 0; 
+    let fetchedActiveSessions = [];
 
     window.addEventListener('DOMContentLoaded', async () => {
         if (typeof checkAuthGuard === 'function') {
@@ -90,7 +89,20 @@
         await loadSessionsDropdown();
     });
 
-    // 🔄 โหลดรายชื่อรอบโครงการเรียน BLS ทั้งหมดลง Dropdown
+    function formatThaiDateDisplay(dateStr) {
+        if (!dateStr) return "";
+        try {
+            const dateParts = dateStr.split("-");
+            if (dateParts.length !== 3) return dateStr;
+            const day = parseInt(dateParts[2], 10);
+            const monthIndex = parseInt(dateParts[1], 10) - 1;
+            const yearBe = parseInt(dateParts[0], 10) + 543;
+            const thaiMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+            return day + " " + thaiMonths[monthIndex] + " " + yearBe;
+        } catch (e) { return dateStr; }
+    }
+
+    // 🔄 โหลดรายชื่อรอบโครงการเรียน BLS ทั้งหมดลง Dropdown (แก้บั๊ก null สำเร็จ)
     async function loadSessionsDropdown() {
         const selectEl = document.getElementById('sessionFilter');
         try {
@@ -98,18 +110,20 @@
                 .from('sessions')
                 .select('*')
                 .eq('course_key', 'BLS')
-                .order('training_date', { ascending: false });
+                .order('id', { ascending: true });
 
             if (error) throw error;
-
             if (!sessions || sessions.length === 0) {
                 selectEl.innerHTML = '<option value="">-- ไม่พบรอบอบรมในระบบ --</option>';
                 return;
             }
 
+            fetchedActiveSessions = sessions;
             selectEl.innerHTML = '<option value="">-- กรุณาเลือกรอบอบรมเพื่อดึงรายชื่อ --</option>';
             sessions.forEach(s => {
-                selectEl.innerHTML += `<option value="${s.id}">${s.name} (${s.date})</option>`;
+                const displayDate = formatThaiDateDisplay(s.training_date);
+                // 🟢 ดึงจากชื่อแมตช์เต็มตรงคอลัมน์ name ไม่ติดค่า null แน่นอนครับ
+                selectEl.innerHTML += `<option value="${s.id}">${s.name} (${displayDate || 'ไม่ระบุวัน'})</option>`;
             });
         } catch(e) {
             console.error(e);
@@ -117,7 +131,7 @@
         }
     }
 
-    // 📊 ฟังก์ชันกวาดข้อมูลสองตารางมาควบรวมและแสดงผลหน้าจอ
+    // 📊 ฟังก์ชันกวาดข้อมูลสองตารางมาควบรวมระเบียบแถวรายชื่อ
     async function loadParticipants() {
         const sessionId = document.getElementById('sessionFilter').value;
         const tbody = document.getElementById('participantTableBody');
@@ -129,42 +143,42 @@
         }
 
         currentSessionId = sessionId;
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>กำลังดึงและควบรวมฐานข้อมูลรายชื่อ...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>กำลังดึงข้อมูลและแมปปิ้งโครงสร้างรายชื่อ...</td></tr>';
 
         try {
-            // 1. ดึงข้อมูลผู้ลงทะเบียนคอร์สนี้
+            // 1. ดึงผู้สมัครที่ผูกกับตัวเลข ID รุ่นนี้
             const { data: regs, error: regError } = await supabaseClient
                 .from('registrations')
                 .select('*')
-                .eq('session_id', sessionId)
+                .eq('session_id', Number(sessionId))
                 .order('id', { ascending: true });
 
             if (regError) throw regError;
 
-            // 2. ดึงคิวสถานะใบประกาศนียบัตรคู่ขนาน
+            // 2. ดึงคิวใบเซอร์มาชนคู่สายขนาน
             const { data: queue, error: qError } = await supabaseClient
                 .from('certificates_queue')
                 .select('*')
-                .eq('session_id', sessionId);
+                .eq('session_id', Number(sessionId));
 
             if (qError) throw qError;
 
             tbody.innerHTML = '';
 
             if (!regs || regs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">ยังไม่มีรายชื่อผู้สมัครในรอบอบรมนี้</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">ยังไม่มีรายชื่อผู้สมัครอบรมในรุ่นนี้</td></tr>';
                 return;
             }
 
             regs.forEach(r => {
-                // ผูกข้อมูลเข้าด้วยกันผ่านรหัสทะเบียน (registration_id)
-                const qItem = queue.find(q => String(q.registration_id) === String(r.id));
+                // ผูกข้อมูลผ่าน registration_id คลีนๆ
+                const qItem = queue ? queue.find(q => String(q.registration_id) === String(r.id)) : null;
                 
                 let checkInStatus = r.is_checked_in 
                     ? `<span class="badge bg-success badge-status"><i class="fas fa-check me-1"></i> มาเรียน</span>` 
                     : `<span class="badge bg-secondary badge-status text-white">❌ ขาดเรียน</span>`;
                 
-                let certStatus = `<span class="badge bg-light text-muted border">ไม่มีข้อมูล</span>`;
+                let certStatus = `<span class="badge bg-light text-muted border">ยังไม่เช็คเอาท์</span>`;
                 let pdfLink = `-`;
 
                 if (qItem) {
@@ -175,7 +189,7 @@
                     if (qItem.pdf_status === "ออกสำเร็จ") {
                         certStatus = `<span class="badge bg-primary badge-status"><i class="fas fa-check-double me-1"></i> ออกสำเร็จ</span>`;
                     } else if (qItem.pdf_status === "กำลังเจน" || qItem.pdf_status === "รอเจน") {
-                        certStatus = `<span class="badge bg-warning text-dark badge-status"><i class="fas fa-spinner fa-spin me-1"></i> กำลังทำไฟล์</span>`;
+                        certStatus = `<span class="badge bg-warning text-dark badge-status"><i class="fas fa-spinner fa-spin me-1"></i> กำลังสลักไฟล์...</span>`;
                     } else if (qItem.pdf_status === "sent") {
                         certStatus = `<span class="badge bg-info text-white badge-status"><i class="fas fa-paper-plane me-1"></i> ส่งเมลแล้ว</span>`;
                     } else {
@@ -183,22 +197,23 @@
                     }
                 }
 
-                // สลักเงื่อนไขล็อกปุ่ม Checkbox: อนุญาตให้ติ๊กเลือกได้ "เฉพาะคนที่ออกใบเซอร์สำเร็จแล้ว" เท่านั้น ป้องกันยิงเมลว่างเปล่า
+                // แอดมินติ๊กเลือกได้เฉพาะคนที่สถานะพร้อมยิงเมล
                 let checkboxDisabled = (qItem && (qItem.pdf_status === "ออกสำเร็จ" || qItem.pdf_status === "sent")) ? "" : "disabled";
+                let currentPrefix = r.prefix || "";
 
                 tbody.innerHTML += `
                     <tr>
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input row-checkbox" ${checkboxDisabled}
                                 data-id="${r.id}" 
-                                data-name="${r.prefix || ''} ${r.full_name_th}" 
+                                data-name="${currentPrefix}${r.full_name_th}" 
                                 data-email="${r.email}" 
-                                data-pdf="${qItem ? qItem.certificate_url : ''}" 
-                                data-cerno="${qItem ? qItem.cer_no : ''}">
+                                data-pdf="${qItem ? (qItem.certificate_url || '') : ''}" 
+                                data-cerno="${qItem ? (qItem.cer_no || '') : ''}">
                         </td>
                         <td><code>${r.id}</code></td>
-                        <td><b class="text-dark">${r.prefix || ''} ${r.full_name_th}</b></td>
-                        <td>${r.phone}</td>
+                        <td><b class="text-dark">${currentPrefix}${r.full_name_th}</b></td>
+                        <td>${r.phone || 'N/A'}</td>
                         <td><small>${r.email}</small></td>
                         <td class="text-center">${checkInStatus}</td>
                         <td class="text-center" id="status_cell_${r.id}">${certStatus}</td>
@@ -208,7 +223,7 @@
 
         } catch(err) {
             console.error(err);
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">เกิดข้อผิดพลาดในการโหลดรายงานรายชื่อ</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">เกิดข้อผิดพลาดรุนแรงในการควบรวมฐานข้อมูลรายงาน</td></tr>';
         }
     }
 
@@ -217,23 +232,22 @@
         checkboxes.forEach(cb => cb.checked = master.checked);
     }
 
-    // 🚀 ไม้เด็ดประจำระบบ: ฟังก์ชันบริหารชุดคิวกลุ่มเพื่อยิง Payload ส่งจดหมายข้ามค่ายและสลับบัญชีอีเมลอัตโนมัติ
+    // 🚀 ระบบวนรอบยิงสลับตู้ส่งจดหมายอัจฉริยะ (Multi-Account)
     async function dispatchBulkEmails() {
         const checkboxes = document.querySelectorAll('.row-checkbox:checked');
         if (checkboxes.length === 0) {
-            Swal.fire('แนะนำหน้างาน', 'โปรดเลือกติ๊กรายชื่อผู้เรียนที่ต้องการส่งอีเมลอย่างน้อย 1 รายชื่อก่อนครับ (ส่งได้เฉพาะแถวที่สถานะเป็น "ออกสำเร็จ" หรือ "ส่งเมลแล้ว")', 'info');
+            Swal.fire('คำแนะนำหน้างาน', 'โปรดคลิกเลือกรายชื่อผู้เรียนที่ต้องการสั่งยิงอีเมลส่งใบประกาศก่อนครับ', 'info');
             return;
         }
 
-        // ข้อบังคับจำกัดจำนวนต่อรอบเพื่อป้องกันสคริปต์หน้าบ้าน Time-out ค้าง
         if (checkboxes.length > 40) {
-            Swal.fire('จำกัดจำนวนการรัน', 'เพื่อความเสถียรและความปลอดภัยของท่อส่งเมล แนะนำให้เลือกสั่งรันกลุ่มละไม่เกิน 40 รายชื่อต่อครั้งครับ', 'warning');
+            Swal.fire('จำกัดโควตาเสถียรภาพ', 'เพื่อความปลอดภัยไม่ให้โดน Google แบน แนะนำให้เลือกสั่งรันคิวไม่เกิน 40 คนต่อรอบครับ', 'warning');
             return;
         }
 
         const confirmRes = await Swal.fire({
-            title: `ยืนยันการยิงอีเมลกลุ่ม?`,
-            text: `คุณเลือกรายชื่อผู้เรียนจำนวน ${checkboxes.length} คน ระบบจะเริ่มรันโฟลว์ส่งจดหมายพร้อมแนบไฟล์วุฒิบัตรทันที`,
+            title: `ยืนยันยิงอีเมลกลุ่ม?`,
+            text: `ส่งจดหมายแนบลิงก์ไฟล์ PDF วุฒิบัตรหาผู้เรียนจำนวน ${checkboxes.length} รายชื่อพร้อมกัน`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonColor: '#071f54',
@@ -249,7 +263,6 @@
         let successCount = 0;
         let failCount = 0;
 
-        // ลูปรันทีละคนเพื่อจัดระเบียบรายงานผลแบบ Realtime บนตารางหน้างาน
         for (let i = 0; i < checkboxes.length; i++) {
             const cb = checkboxes[i];
             const regId = cb.getAttribute('data-id');
@@ -258,13 +271,11 @@
             const targetPdf = cb.getAttribute('data-pdf');
             const targetCerNo = cb.getAttribute('data-cerno');
 
-            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังส่งของคนที่ ${i+1}/${checkboxes.length}: ${targetName}`;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>กำลังยิงเมลคนที่ ${i+1}/${checkboxes.length}: ${targetName}`;
             
-            // เปลี่ยนสถานะแถวนั้นบนหน้าจอให้แอดมินเห็นความเคลื่อนไหวทันที
             const statusCell = document.getElementById(`status_cell_${regId}`);
-            statusCell.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> กำลังยิงเมล...</span>`;
+            statusCell.innerHTML = `<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> บินส่งของ...</span>`;
 
-            // ดึงพิกัด URL ของตัวยิงเมลปัจจุบันจากอาร์เรย์ใน config.js
             let currentGasUrl = GAS_WEB_APP_URLS[activeMailAccountIndex];
 
             let emailPayload = {
@@ -277,7 +288,7 @@
 
             let sentSuccess = false;
             let attempts = 0;
-            // ลูปวนรอบเผื่อกรณีตู้หลักรายงานว่า quota_exceeded จะทำการเปลี่ยนบัญชีแล้วยิงซ้ำคนเดิมทันที
+
             while (!sentSuccess && attempts < GAS_WEB_APP_URLS.length) {
                 try {
                     const response = await fetch(currentGasUrl, {
@@ -292,33 +303,31 @@
                         sentSuccess = true;
                         successCount++;
                         
-                        // 1. อัปเดตสถานะความสำเร็จกลับไปที่ตารางคิววุฒิบัตรใน Supabase
+                        // ซิงค์บันทึกกลับไปยัง Supabase คิวงาน
                         await supabaseClient
                             .from('certificates_queue')
                             .update({ pdf_status: 'sent' })
-                            .eq('registration_id', regId)
-                            .eq('course_key', 'BLS');
+                            .eq('registration_id', regId);
 
                         statusCell.innerHTML = `<span class="badge bg-info text-white badge-status"><i class="fas fa-paper-plane me-1"></i> ส่งเมลแล้ว</span>`;
-                        cb.checked = false; // ปลดติ๊กออกเมื่อผ่านฉลุย
+                        cb.checked = false; 
                     } else if (resJson.error === "quota_exceeded" || resJson.quota_exceeded) {
-                        // 🚨 จุดไม้ตาย: ถ้าโควตาตู้ปัจจุบันเต็ม ให้สลับสวิตช์ขยับไปหยิบบัญชีถัดไปในคลัง
-                        console.warn(`⚠️ บัญชีตู้ส่งเมลที่ ${activeMailAccountIndex + 1} เต็มแล้ว! กำลังเปลี่ยนไปใช้บัญชีถัดไป...`);
+                        // 🚨 ตู้ส่งหลักเต็ม ขยับไปใช้ตู้ส่งสำรองถัดไปทันที
                         activeMailAccountIndex = (activeMailAccountIndex + 1) % GAS_WEB_APP_URLS.length;
                         currentGasUrl = GAS_WEB_APP_URLS[activeMailAccountIndex];
                         attempts++;
                     } else {
-                        throw new Error(resJson.error || "เกิดข้อผิดพลาดไม่ทราบสาเหตุจากฝั่งสคริปต์ส่งเมล");
+                        throw new Error(resJson.error || "เฟลล้มเหลว");
                     }
                 } catch (err) {
-                    console.error(`ขัดข้องในการยิงเมลหาคนชื่อ ${targetName}:`, err);
-                    attempts = GAS_WEB_APP_URLS.length; // สั่งเบรกหลุดลูปเพื่อบันทึกว่าคนนี้เฟล
+                    console.error(err);
+                    attempts = GAS_WEB_APP_URLS.length; 
                 }
             }
 
             if (!sentSuccess) {
                 failCount++;
-                statusCell.innerHTML = `<span class="badge bg-danger text-white badge-status"><i class="fas fa-times-circle me-1"></i> ส่งเฟล</span>`;
+                statusCell.innerHTML = `<span class="badge bg-danger text-white badge-status"><i class="fas fa-times-circle me-1"></i> ส่งไม่ผ่าน</span>`;
             }
         }
 
@@ -326,13 +335,13 @@
         btn.innerHTML = `<i class="fas fa-envelope-open-text me-2"></i> ยิงอีเมลส่งใบประกาศ (กลุ่มที่เลือก)`;
 
         Swal.fire({
-            title: 'ปฏิบัติการยิงเมลกลุ่มเสร็จสิ้น',
-            html: `ส่งสำเร็จ: <b class="text-success fs-5">${successCount} คน</b><br>ส่งล้มเหลว: <b class="text-danger fs-5">${failCount} คน</b><br><br><small class="text-muted">ขณะนี้ระบบกำลังคาหัวอยู่ที่บัญชีตู้ส่งเมลตัวที่ ${activeMailAccountIndex + 1}</small>`,
+            title: 'ภารกิจยิงจดหมายกลุ่มเสร็จสิ้น',
+            html: `สำเร็จ: <b class="text-success fs-5">${successCount} รายชื่อ</b><br>ล้มเหลว: <b class="text-danger fs-5">${failCount} รายชื่อ</b>`,
             icon: successCount > 0 ? 'success' : 'error',
             confirmButtonColor: '#071f54'
         });
 
-        loadParticipants(); // รีโหลดข้อมูลภาพรวมตารางใหม่อีกครั้ง
+        loadParticipants();
     }
 </script>
 </body>
