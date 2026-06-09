@@ -16,8 +16,8 @@ const GOOGLE_SHEET_API = MAIN_REG_API_URL;
 // ========================================================================
 // 🌟 ล็อกเป้าหมายตู้ยิงเมลใบประกาศ (สำหรับหน้า participants.html) ใช้ 2 บัญชีหลัก-รองของนาย
 const GAS_WEB_APP_URLS = [
-    "https://script.google.com/macros/s/AKfycbwwYjoq7Z5IKNx9R8nG-CKP_2kwzYYgFHcBYycMjQ_6MUj8mgHtAne6pqcgDNUiNKLD/exec", // 🟢 เมลที่ 1 (ตู้แอดมินหลักล่าสุด)
-    "https://script.google.com/macros/s/AKfycbwEqswvbSQ2_dn19ZwbGpmP3zoDmO4nYM2eZuq0xR3E91gdSBYBAEOr8J2QtWOmwcl4/exec"  // 🟡 เมลที่ 2 (ตู้แอดมินสำรอง)
+    "https://script.google.com/macros/s/AKfycbzW4_SvZWJKcVZFLbyynYQgTTjNB8Z7HRF7B1KL0nFnGoocQwIFwBVmb7ivNNIb-YDt3Q/exec", // 🟢 เมลที่ 1 (ตู้แอดมินหลักล่าสุด)
+    "https://script.google.com/macros/s/AKfycbwOCb0MUZwPY5jzJACGqQcpK0yYkYWy9anjCJDpNaXulobOpXhcNG3cwUL8G3rqclII/exec"  // 🟡 เมลที่ 2 (ตู้แอดมินสำรอง)
 ];
 
 // ========================================================================
